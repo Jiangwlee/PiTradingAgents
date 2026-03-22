@@ -10,6 +10,25 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# 解析命令行参数
+VERBOSE=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -v|--verbose)
+            VERBOSE=true
+            shift
+            ;;
+        -*)
+            echo "未知选项: $1" >&2
+            echo "用法: $0 [-v|--verbose] [YYYY-MM-DD]" >&2
+            exit 1
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
 # 交易日期，默认今天
 TRADE_DATE="${1:-$(date +%Y-%m-%d)}"
 
@@ -17,14 +36,35 @@ TRADE_DATE="${1:-$(date +%Y-%m-%d)}"
 REPORT_DIR="$PROJECT_ROOT/data/reports/$TRADE_DATE"
 mkdir -p "$REPORT_DIR"
 
+# 创建临时目录（P0-1 修复）
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
+
+# Pi CLI 调用函数
+run_pi() {
+    pi -p --model "kimi-coding/kimi-k2-thinking" --no-session "$@"
+}
+
+# Agent 执行封装：处理输出重定向和 verbose 模式
+# 用法: run_agent <label> <output_file> [run_pi args...]
+run_agent() {
+    local label="$1"
+    local output_file="$2"
+    shift 2
+
+    if $VERBOSE; then
+        run_pi "$@" 2>&1 | tee "$output_file" | sed "s/^/[$label] /"
+    else
+        run_pi "$@" > "$output_file" 2>&1
+    fi
+}
+
 echo "=============================================="
 echo "PiTradingAgents — A股题材交易分析 Pipeline"
 echo "交易日期: $TRADE_DATE"
 echo "输出目录: $REPORT_DIR"
+$VERBOSE && echo "模式: verbose（实时输出 Agent 推理过程）"
 echo "=============================================="
-
-# Pi CLI 基础调用参数
-PI_CMD="pi -p --model kimi-coding/kimi-k2-thinking --no-session"
 
 # Skill 目录
 SKILL_DIR="$PROJECT_ROOT/skills/ashare-data"
@@ -41,7 +81,7 @@ echo "启动 4 个分析师..."
 # 1. 情绪分析师
 (
     echo "[分析师] 情绪分析师启动..."
-    $PI_CMD --skill "$SKILL_DIR" "$PROJECT_ROOT/agents/analysts/emotion-analyst.md" "$TRADE_DATE" > "$REPORT_DIR/01-emotion-report.md" 2>&1 && \
+    run_agent "情绪分析师" "$REPORT_DIR/01-emotion-report.md" --skill "$SKILL_DIR" "$PROJECT_ROOT/agents/analysts/emotion-analyst.md" "$TRADE_DATE" && \
     echo "[分析师] 情绪分析师完成 ✓" || \
     echo "[警告] 情绪分析师执行失败，继续执行其他任务"
 ) &
@@ -50,7 +90,7 @@ PID_EMOTION=$!
 # 2. 题材分析师
 (
     echo "[分析师] 题材分析师启动..."
-    $PI_CMD --skill "$SKILL_DIR" "$PROJECT_ROOT/agents/analysts/theme-analyst.md" "$TRADE_DATE" > "$REPORT_DIR/02-theme-report.md" 2>&1 && \
+    run_agent "题材分析师" "$REPORT_DIR/02-theme-report.md" --skill "$SKILL_DIR" "$PROJECT_ROOT/agents/analysts/theme-analyst.md" "$TRADE_DATE" && \
     echo "[分析师] 题材分析师完成 ✓" || \
     echo "[警告] 题材分析师执行失败，继续执行其他任务"
 ) &
@@ -59,7 +99,7 @@ PID_THEME=$!
 # 3. 趋势分析师
 (
     echo "[分析师] 趋势分析师启动..."
-    $PI_CMD --skill "$SKILL_DIR" "$PROJECT_ROOT/agents/analysts/trend-analyst.md" "$TRADE_DATE" > "$REPORT_DIR/03-trend-report.md" 2>&1 && \
+    run_agent "趋势分析师" "$REPORT_DIR/03-trend-report.md" --skill "$SKILL_DIR" "$PROJECT_ROOT/agents/analysts/trend-analyst.md" "$TRADE_DATE" && \
     echo "[分析师] 趋势分析师完成 ✓" || \
     echo "[警告] 趋势分析师执行失败，继续执行其他任务"
 ) &
@@ -70,7 +110,7 @@ PID_TREND=$!
     echo "[分析师] 催化剂分析师启动..."
     if [[ -d "$CHROME_CDP_SKILL" && -f "$CHROME_CDP_SKILL/scripts/sites/google/search.sh" ]]; then
         echo "  Chrome CDP Skill 可用，启动深度研究..."
-        $PI_CMD --skill "$SKILL_DIR" --skill "$CHROME_CDP_SKILL" "$PROJECT_ROOT/agents/analysts/catalyst-analyst.md" "$TRADE_DATE" > "$REPORT_DIR/04-catalyst-report.md" 2>&1 && \
+        run_agent "催化剂分析师" "$REPORT_DIR/04-catalyst-report.md" --skill "$SKILL_DIR" --skill "$CHROME_CDP_SKILL" "$PROJECT_ROOT/agents/analysts/catalyst-analyst.md" "$TRADE_DATE" && \
         echo "[分析师] 催化剂分析师完成 ✓" || \
         echo "[警告] 催化剂分析师执行失败，继续执行其他任务"
     else
@@ -119,40 +159,62 @@ echo "阶段 1 完成"
 echo ""
 echo "=== 阶段 2: 市场环境辩论（顺序执行） ==="
 
-# 拼接 4 份报告作为上下文
-REPORTS_CONTENT=""
+# 拼接 4 份报告到临时文件（P0-1 修复）
+REPORTS_CTX="$TMP_DIR/reports-context.txt"
+> "$REPORTS_CTX"
 for report in "$REPORT_DIR"/0{1,2,3,4}-*-report.md; do
     if [[ -f "$report" ]]; then
-        REPORTS_CONTENT+="\n\n=== $(basename "$report") ===\n"
-        REPORTS_CONTENT+=$(cat "$report")
+        printf '\n\n=== %s ===\n' "$(basename "$report")" >> "$REPORTS_CTX"
+        cat "$report" >> "$REPORTS_CTX"
     fi
 done
 
-# 1. 看多辩手
+# 1. 看多辩手（P0-1 修复：使用临时 prompt 文件）
 echo "[辩论] 看多辩手构建论据..."
-$PI_CMD "$PROJECT_ROOT/agents/debaters/bull-debater.md" "市场环境辩论模式\n\n分析报告汇总:$REPORTS_CONTENT" > "$REPORT_DIR/05a-bull-argument.md" 2>&1 || {
+BULL_PROMPT="$TMP_DIR/bull-prompt.txt"
+{
+    echo "市场环境辩论模式"
+    echo ""
+    echo "分析报告汇总:"
+    cat "$REPORTS_CTX"
+} > "$BULL_PROMPT"
+
+run_agent "看多辩手" "$REPORT_DIR/05a-bull-argument.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" "@$BULL_PROMPT" || {
     echo "[警告] 看多辩手执行失败"
 }
 
-BULL_CONTENT=""
-if [[ -f "$REPORT_DIR/05a-bull-argument.md" ]]; then
-    BULL_CONTENT=$(cat "$REPORT_DIR/05a-bull-argument.md")
-fi
-
-# 2. 看空辩手
+# 2. 看空辩手（P0-1 修复：使用临时 prompt 文件）
 echo "[辩论] 看空辩手构建论据..."
-$PI_CMD "$PROJECT_ROOT/agents/debaters/bear-debater.md" "市场环境辩论模式\n\n分析报告汇总:$REPORTS_CONTENT\n\n看多辩手论述:\n$BULL_CONTENT" > "$REPORT_DIR/05b-bear-argument.md" 2>&1 || {
+BEAR_PROMPT="$TMP_DIR/bear-prompt.txt"
+{
+    echo "市场环境辩论模式"
+    echo ""
+    echo "分析报告汇总:"
+    cat "$REPORTS_CTX"
+    echo ""
+    echo "看多辩手论述:"
+    cat "$REPORT_DIR/05a-bull-argument.md" 2>/dev/null || echo "无"
+} > "$BEAR_PROMPT"
+
+run_agent "看空辩手" "$REPORT_DIR/05b-bear-argument.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" "@$BEAR_PROMPT" || {
     echo "[警告] 看空辩手执行失败"
 }
 
-BEAR_CONTENT=""
-if [[ -f "$REPORT_DIR/05b-bear-argument.md" ]]; then
-    BEAR_CONTENT=$(cat "$REPORT_DIR/05b-bear-argument.md")
-fi
-
-# 3. 市场裁判
+# 3. 市场裁判（P0-1 修复：使用临时 prompt 文件）
 echo "[裁判] 市场环境裁判综合判定..."
-$PI_CMD "$PROJECT_ROOT/agents/judges/market-judge.md" "\n分析报告汇总:$REPORTS_CONTENT\n\n看多辩手论述:\n$BULL_CONTENT\n\n看空辩手论述:\n$BEAR_CONTENT" > "$REPORT_DIR/05-market-debate.md" 2>&1 || {
+JUDGE_PROMPT="$TMP_DIR/judge-prompt.txt"
+{
+    echo "分析报告汇总:"
+    cat "$REPORTS_CTX"
+    echo ""
+    echo "看多辩手论述:"
+    cat "$REPORT_DIR/05a-bull-argument.md" 2>/dev/null || echo "无"
+    echo ""
+    echo "看空辩手论述:"
+    cat "$REPORT_DIR/05b-bear-argument.md" 2>/dev/null || echo "无"
+} > "$JUDGE_PROMPT"
+
+run_agent "市场裁判" "$REPORT_DIR/05-market-debate.md" "$PROJECT_ROOT/agents/judges/market-judge.md" "@$JUDGE_PROMPT" || {
     echo "[警告] 市场裁判执行失败"
 }
 
@@ -163,13 +225,14 @@ echo "阶段 2 完成"
 echo ""
 echo "=== 阶段 3: 题材辩论（顺序执行） ==="
 
-# 从市场辩论结果中提取 TOP_THEMES
+# 从市场辩论结果中提取 TOP_THEMES（P0-3 修复：更健壮的匹配）
 TOP_THEMES=""
 if [[ -f "$REPORT_DIR/05-market-debate.md" ]]; then
-    # 提取 TOP_THEMES: 行，格式为 TOP_THEMES: 题材1,题材2,题材3
-    TOP_THEMES_LINE=$(grep -E "^TOP_THEMES:" "$REPORT_DIR/05-market-debate.md" 2>/dev/null || true)
+    # 放宽匹配：支持前导空格、中英文冒号
+    TOP_THEMES_LINE=$(grep -iE '^\s*TOP_THEMES\s*[:：]' "$REPORT_DIR/05-market-debate.md" 2>/dev/null | head -1 || true)
     if [[ -n "$TOP_THEMES_LINE" ]]; then
-        TOP_THEMES=$(echo "$TOP_THEMES_LINE" | sed 's/^TOP_THEMES://' | tr ',' '\n' | tr -d ' ')
+        # 支持中英文冒号和中英文逗号
+        TOP_THEMES=$(echo "$TOP_THEMES_LINE" | sed -E 's/^[^:：]*[:：]//' | tr '，,' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$')
     fi
 fi
 
@@ -190,17 +253,42 @@ while IFS= read -r theme; do
     THEME_IDX=$((THEME_IDX + 1))
     echo "[辩论] 题材 $THEME_IDX: $theme"
     
-    # 题材看多辩论
+    # 题材看多辩论（P0-1 修复：使用临时 prompt 文件）
     echo "  ├─ 看多辩手..."
-    $PI_CMD "$PROJECT_ROOT/agents/debaters/bull-debater.md" "题材辩论模式\n题材名称:$theme\n\n分析报告汇总:$REPORTS_CONTENT\n\n市场环境判定:\n$(cat "$REPORT_DIR/05-market-debate.md" 2>/dev/null || echo '无')" > "$REPORT_DIR/06a-bull-${THEME_IDX}.md" 2>&1 || {
+    THEME_BULL_PROMPT="$TMP_DIR/theme-${THEME_IDX}-bull-prompt.txt"
+    {
+        echo "题材辩论模式"
+        echo "题材名称: $theme"
+        echo ""
+        echo "分析报告汇总:"
+        cat "$REPORTS_CTX"
+        echo ""
+        echo "市场环境判定:"
+        cat "$REPORT_DIR/05-market-debate.md" 2>/dev/null || echo "无"
+    } > "$THEME_BULL_PROMPT"
+    
+    run_agent "题材${THEME_IDX}看多" "$REPORT_DIR/06a-bull-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" "@$THEME_BULL_PROMPT" || {
         echo "  [警告] 题材 $theme 看多辩手执行失败"
     }
     
-    THEME_BULL=$(cat "$REPORT_DIR/06a-bull-${THEME_IDX}.md" 2>/dev/null || echo "")
-    
-    # 题材看空辩论
+    # 题材看空辩论（P0-1 修复：使用临时 prompt 文件）
     echo "  ├─ 看空辩手..."
-    $PI_CMD "$PROJECT_ROOT/agents/debaters/bear-debater.md" "题材辩论模式\n题材名称:$theme\n\n分析报告汇总:$REPORTS_CONTENT\n\n市场环境判定:\n$(cat "$REPORT_DIR/05-market-debate.md" 2>/dev/null || echo '无')\n\n看多论述:\n$THEME_BULL" > "$REPORT_DIR/06b-bear-${THEME_IDX}.md" 2>&1 || {
+    THEME_BEAR_PROMPT="$TMP_DIR/theme-${THEME_IDX}-bear-prompt.txt"
+    {
+        echo "题材辩论模式"
+        echo "题材名称: $theme"
+        echo ""
+        echo "分析报告汇总:"
+        cat "$REPORTS_CTX"
+        echo ""
+        echo "市场环境判定:"
+        cat "$REPORT_DIR/05-market-debate.md" 2>/dev/null || echo "无"
+        echo ""
+        echo "看多论述:"
+        cat "$REPORT_DIR/06a-bull-${THEME_IDX}.md" 2>/dev/null || echo "无"
+    } > "$THEME_BEAR_PROMPT"
+    
+    run_agent "题材${THEME_IDX}看空" "$REPORT_DIR/06b-bear-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" "@$THEME_BEAR_PROMPT" || {
         echo "  [警告] 题材 $theme 看空辩手执行失败"
     }
 done <<< "$TOP_THEMES"
@@ -223,22 +311,33 @@ if [[ $THEME_IDX -eq 0 ]]; then
 请查看 05-market-debate.md 中的市场环境判定，手动识别需要深度分析的题材。
 EOF
 else
-    # 题材裁判汇总
+    # 题材裁判汇总（P0-1 修复：使用临时 prompt 文件）
     echo "[裁判] 题材机会裁判综合判定..."
     
-    THEME_DEBATES=""
-    for i in $(seq 1 $THEME_IDX); do
-        if [[ -f "$REPORT_DIR/06a-bull-${i}.md" ]]; then
-            THEME_DEBATES+="\n\n=== 题材 $i 看多论述 ===\n"
-            THEME_DEBATES+=$(cat "$REPORT_DIR/06a-bull-${i}.md")
-        fi
-        if [[ -f "$REPORT_DIR/06b-bear-${i}.md" ]]; then
-            THEME_DEBATES+="\n\n=== 题材 $i 看空论述 ===\n"
-            THEME_DEBATES+=$(cat "$REPORT_DIR/06b-bear-${i}.md")
-        fi
-    done
+    THEME_JUDGE_PROMPT="$TMP_DIR/theme-judge-prompt.txt"
+    {
+        echo "市场环境辩论结果:"
+        cat "$REPORT_DIR/05-market-debate.md" 2>/dev/null || echo "无"
+        echo ""
+        echo "各题材辩论汇总:"
+        for i in $(seq 1 $THEME_IDX); do
+            if [[ -f "$REPORT_DIR/06a-bull-${i}.md" ]]; then
+                echo ""
+                echo "=== 题材 $i 看多论述 ==="
+                cat "$REPORT_DIR/06a-bull-${i}.md"
+            fi
+            if [[ -f "$REPORT_DIR/06b-bear-${i}.md" ]]; then
+                echo ""
+                echo "=== 题材 $i 看空论述 ==="
+                cat "$REPORT_DIR/06b-bear-${i}.md"
+            fi
+        done
+        echo ""
+        echo "分析报告汇总:"
+        cat "$REPORTS_CTX"
+    } > "$THEME_JUDGE_PROMPT"
     
-    $PI_CMD "$PROJECT_ROOT/agents/judges/theme-judge.md" "\n市场环境辩论结果:\n$(cat "$REPORT_DIR/05-market-debate.md" 2>/dev/null || echo '无')\n\n各题材辩论汇总:$THEME_DEBATES\n\n分析报告汇总:$REPORTS_CONTENT" > "$REPORT_DIR/06-theme-debate.md" 2>&1 || {
+    run_agent "题材裁判" "$REPORT_DIR/06-theme-debate.md" "$PROJECT_ROOT/agents/judges/theme-judge.md" "@$THEME_JUDGE_PROMPT" || {
         echo "[警告] 题材裁判执行失败"
     }
 fi
@@ -251,25 +350,38 @@ echo ""
 echo "=== 阶段 4: 最终决策 ==="
 echo "[决策] 投资经理生成最终报告..."
 
-# 收集所有报告内容
-ALL_REPORTS=""
+# 构建所有报告上下文（P0-1 修复：使用临时文件）
+ALL_REPORTS_CTX="$TMP_DIR/all-reports-context.txt"
+> "$ALL_REPORTS_CTX"
 for report in "$REPORT_DIR"/*.md; do
-    if [[ -f "$report" && "$report" != "$REPORT_DIR/07-final-report.md" ]]; then
-        ALL_REPORTS+="\n\n=== $(basename "$report") ===\n"
-        ALL_REPORTS+=$(cat "$report")
+    if [[ -f "$report" && "$(basename "$report")" != "07-final-report.md" ]]; then
+        printf '\n\n=== %s ===\n' "$(basename "$report")" >> "$ALL_REPORTS_CTX"
+        cat "$report" >> "$ALL_REPORTS_CTX"
     fi
 done
 
 # 读取历史记忆
-LESSONS=""
-if [[ -f "$PROJECT_ROOT/data/memory/lessons.jsonl" ]]; then
-    LESSONS=$(tail -20 "$PROJECT_ROOT/data/memory/lessons.jsonl" 2>/dev/null || echo "无历史记忆")
-else
-    LESSONS="无历史记忆文件"
-fi
+LESSONS_FILE="$TMP_DIR/lessons.md"
+{
+    echo "历史记忆（最近20条）:"
+    if [[ -f "$PROJECT_ROOT/data/memory/lessons.jsonl" ]]; then
+        tail -20 "$PROJECT_ROOT/data/memory/lessons.jsonl" 2>/dev/null || echo "无历史记忆"
+    else
+        echo "无历史记忆文件"
+    fi
+} > "$LESSONS_FILE"
 
-# 投资经理生成最终报告
-$PI_CMD "$PROJECT_ROOT/agents/decision/investment-manager.md" "\n所有分析报告:$ALL_REPORTS\n\n历史记忆（最近20条）:\n$LESSONS" > "$REPORT_DIR/07-final-report.md" 2>&1 || {
+# 投资经理 prompt 文件（P0-1 修复）
+FINAL_PROMPT="$TMP_DIR/final-prompt.txt"
+{
+    echo "所有分析报告:"
+    cat "$ALL_REPORTS_CTX"
+    echo ""
+    echo "历史记忆（最近20条）:"
+    cat "$LESSONS_FILE"
+} > "$FINAL_PROMPT"
+
+run_agent "投资经理" "$REPORT_DIR/07-final-report.md" "$PROJECT_ROOT/agents/decision/investment-manager.md" "@$FINAL_PROMPT" || {
     echo "[警告] 投资经理执行失败"
 }
 
@@ -284,7 +396,7 @@ echo "=============================================="
 echo "最终报告路径: $REPORT_DIR/07-final-report.md"
 echo ""
 echo "生成的所有报告："
-ls -la "$REPORT_DIR"/
+ls -la "$REPORT_DIR"/*.md
 echo ""
 echo "查看最终报告:"
 echo "  cat $REPORT_DIR/07-final-report.md"

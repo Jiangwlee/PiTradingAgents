@@ -146,9 +146,9 @@ model: kimi-k2-thinking
 
 ## 脚本调用路径
 
-脚本位于 `skills/ashare-data/scripts/` 目录下：
-- `./skills/ashare-data/scripts/fetch-market-emotion.sh <trade_date>`
-- `./skills/ashare-data/scripts/fetch-market-emotion-history.sh 20 <trade_date>`
+脚本路径格式（pi 会在 skill 目录上下文中执行）：
+- `skills/ashare-data/scripts/fetch-market-emotion.sh <trade_date>`
+- `skills/ashare-data/scripts/fetch-market-emotion-history.sh 20 <trade_date>`
 
 使用 `bash` 工具调用这些脚本获取数据。
 

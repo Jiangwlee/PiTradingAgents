@@ -87,7 +87,7 @@ PiTradingAgents/
 
 ### 运行约束
 
-- **手动触发** — 通过 `bin/run-analysis.sh [YYYY-MM-DD]` 执行，不做定时任务
+- **手动触发** — 通过 `bin/run-analysis.sh [-v] [YYYY-MM-DD]` 执行，不做定时任务
 - **盘后分析** — 设计为收盘后运行，不支持盘中实时分析
 - **本地执行** — 在当前主机运行，不部署到远程
 
@@ -132,8 +132,11 @@ model: kimi-k2-thinking
 ## 常用命令
 
 ```bash
-# 运行完整分析 Pipeline
+# 运行完整分析 Pipeline（静默模式，只输出阶段提示）
 bin/run-analysis.sh 2026-03-21
+
+# Verbose 模式（实时查看每个 Agent 的推理输出，带 [Agent名] 前缀）
+bin/run-analysis.sh -v 2026-03-21
 
 # 测试 ashare-platform API 连通性
 curl -s http://127.0.0.1:8000/health

@@ -94,7 +94,7 @@ bash skills/ashare-data/scripts/fetch-theme-stocks.sh "低空经济" 2026-03-21
 
 ## 注意事项
 
-1. 脚本路径是相对于项目根目录的 `skills/ashare-data/scripts/`
+1. 脚本路径格式（pi 会在 skill 目录上下文中执行）：`scripts/`
 2. 如果 API 返回空数据或报错，在报告中注明"数据获取失败"
 3. 趋势池数据可能包含大量个股，聚焦前 30-50 名进行重点分析
 4. 题材成分股查询需要知道具体的题材名称，可从题材分析师的输出中获取

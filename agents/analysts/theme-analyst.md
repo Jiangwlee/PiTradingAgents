@@ -98,7 +98,7 @@ bash skills/ashare-data/scripts/fetch-theme-stocks.sh "<题材名称>" <trade_da
 ## 注意事项
 
 1. 所有数据通过 bash 工具调用脚本获取，不要假设数据内容
-2. 脚本路径相对于当前工作目录：`skills/ashare-data/scripts/`
+2. 脚本路径格式（pi 会在 skill 目录上下文中执行）：`scripts/`
 3. 如果某个脚本调用失败，在报告中注明数据缺失
 4. 题材名称可能包含中文，调用脚本时确保使用正确的引号
 5. 热度趋势基于 5 日历史数据判断（上升/持平/下降）

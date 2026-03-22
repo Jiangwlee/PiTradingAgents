@@ -1,10 +1,10 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # fetch-market-review.sh - 获取市场复盘数据
 # 用法: ./fetch-market-review.sh <trade_date>
 # 示例: ./fetch-market-review.sh 2026-03-21
-# API: GET /market-reviews/daily/{trade_date}
+# API: GET /market-emotion/daily/{trade_date}/review
 
-set -e
+set -euo pipefail
 
 API_URL="${ASHARE_API_URL:-http://127.0.0.1:8000}"
 
@@ -16,4 +16,4 @@ fi
 
 TRADE_DATE="$1"
 
-curl -sf "${API_URL}/market-reviews/daily/${TRADE_DATE}" | jq .
+curl -sf --connect-timeout 5 --max-time 30 "${API_URL}/market-emotion/daily/${TRADE_DATE}/review" | jq .
