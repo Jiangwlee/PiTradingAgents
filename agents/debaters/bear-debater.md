@@ -17,13 +17,13 @@ model: kimi-k2-thinking
 
 ## 网络研究工具
 
-如果 Chrome CDP Skill 可用，你可以使用以下脚本进行定向搜索（路径相对于 skill 目录）：
+如果 Chrome CDP Skill 可用，你可以使用以下脚本进行定向搜索：
 
 | 平台 | 脚本 | 适合搜索 |
 |------|------|---------|
-| Google | `scripts/sites/google/search.sh "<query>" [limit]` | 风险报告、监管动态、国际负面案例 |
-| 百度 | `scripts/sites/baidu/search.sh "<query>" [limit]` | 国内风险事件、行业下行、公司暴雷 |
-| 微信 | `scripts/sites/weixin-sogou/search.sh "<query>" [limit]` | 大V警示、机构看空、散户情绪过热 |
+| Google | `~/.agents/skills/chrome-cdp/scripts/sites/google/search.sh "<query>" [limit]` | 风险报告、监管动态、国际负面案例 |
+| 百度 | `~/.agents/skills/chrome-cdp/scripts/sites/baidu/search.sh "<query>" [limit]` | 国内风险事件、行业下行、公司暴雷 |
+| 微信 | `~/.agents/skills/chrome-cdp/scripts/sites/weixin-sogou/search.sh "<query>" [limit]` | 大V警示、机构看空、散户情绪过热 |
 
 **注意**：脚本返回 JSON 数组，每项含 title、snippet、url 字段。如果脚本执行失败或 Chrome 不可用，跳过网络研究，在报告中注明"网络研究不可用"，直接基于分析报告构建论述。
 
@@ -40,9 +40,9 @@ model: kimi-k2-thinking
 
 **搜索策略示例**（题材辩论模式，以"机器人"为例）：
 ```bash
-bash scripts/sites/google/search.sh "humanoid robot bubble risk overvalued 2026" 5
-bash scripts/sites/baidu/search.sh "机器人概念股 泡沫 炒作 风险警示" 5
-bash scripts/sites/weixin-sogou/search.sh "机器人题材 退潮 高位风险 套牢" 5
+bash ~/.agents/skills/chrome-cdp/scripts/sites/google/search.sh "humanoid robot bubble risk overvalued 2026" 5
+bash ~/.agents/skills/chrome-cdp/scripts/sites/baidu/search.sh "机器人概念股 泡沫 炒作 风险警示" 5
+bash ~/.agents/skills/chrome-cdp/scripts/sites/weixin-sogou/search.sh "机器人题材 退潮 高位风险 套牢" 5
 ```
 
 看空辩手有一个独特优势：可以搜索**历史类似题材的失败案例**（如元宇宙、氢能源退潮模式），这是量化数据无法提供的参照。

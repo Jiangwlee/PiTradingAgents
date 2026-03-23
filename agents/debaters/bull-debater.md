@@ -18,13 +18,13 @@ model: kimi-k2-thinking
 
 ## 网络研究工具
 
-如果 Chrome CDP Skill 可用，你可以使用以下脚本进行定向搜索（路径相对于 skill 目录）：
+如果 Chrome CDP Skill 可用，你可以使用以下脚本进行定向搜索：
 
 | 平台 | 脚本 | 适合搜索 |
 |------|------|---------|
-| Google | `scripts/sites/google/search.sh "<query>" [limit]` | 政策文件、行业报告、英文资讯 |
-| 百度 | `scripts/sites/baidu/search.sh "<query>" [limit]` | 国内新闻、公告、产业动态 |
-| 微信 | `scripts/sites/weixin-sogou/search.sh "<query>" [limit]` | 市场观点、大V分析、机构研究 |
+| Google | `~/.agents/skills/chrome-cdp/scripts/sites/google/search.sh "<query>" [limit]` | 政策文件、行业报告、英文资讯 |
+| 百度 | `~/.agents/skills/chrome-cdp/scripts/sites/baidu/search.sh "<query>" [limit]` | 国内新闻、公告、产业动态 |
+| 微信 | `~/.agents/skills/chrome-cdp/scripts/sites/weixin-sogou/search.sh "<query>" [limit]` | 市场观点、大V分析、机构研究 |
 
 **注意**：脚本返回 JSON 数组，每项含 title、snippet、url 字段。如果脚本执行失败或 Chrome 不可用，跳过网络研究，在报告中注明"网络研究不可用"，直接基于分析报告构建论述。
 
@@ -41,9 +41,9 @@ model: kimi-k2-thinking
 
 **搜索策略示例**（题材辩论模式，以"机器人"为例）：
 ```bash
-bash scripts/sites/google/search.sh "人形机器人 政策支持 2026 利好" 5
-bash scripts/sites/baidu/search.sh "机器人概念股 订单 业绩 最新" 5
-bash scripts/sites/weixin-sogou/search.sh "机器人题材 机构看多 逻辑" 5
+bash ~/.agents/skills/chrome-cdp/scripts/sites/google/search.sh "人形机器人 政策支持 2026 利好" 5
+bash ~/.agents/skills/chrome-cdp/scripts/sites/baidu/search.sh "机器人概念股 订单 业绩 最新" 5
+bash ~/.agents/skills/chrome-cdp/scripts/sites/weixin-sogou/search.sh "机器人题材 机构看多 逻辑" 5
 ```
 
 ### 步骤 1：构建论据

@@ -15,15 +15,25 @@ API_URL="${ASHARE_API_URL:-http://127.0.0.1:8000}"
 
 # 解析命令行参数
 VERBOSE=false
+STAGES=""        # 空 = 全部阶段；否则逗号分隔，如 "2,3"
+MODEL_OVERRIDE="" # 空 = 使用 Agent frontmatter 中的模型
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -v|--verbose)
             VERBOSE=true
             shift
             ;;
+        -s|--stages)
+            STAGES="${2:-}"
+            shift 2
+            ;;
+        -m|--model)
+            MODEL_OVERRIDE="${2:-}"
+            shift 2
+            ;;
         -*)
             echo "未知选项: $1" >&2
-            echo "用法: $0 [-v|--verbose] [YYYY-MM-DD]" >&2
+            echo "用法: $0 [-v|--verbose] [-s|--stages 1,2,3] [-m|--model MODEL] [YYYY-MM-DD]" >&2
             exit 1
             ;;
         *)
@@ -31,6 +41,13 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# 判断某阶段是否需要执行（STAGES 为空表示全部执行）
+should_run_stage() {
+    [[ -z "$STAGES" ]] && return 0
+    echo ",$STAGES," | grep -q ",${1}," && return 0
+    return 1
+}
 
 # 确定行情日期（TRADE_DATE）
 # 规则：所有从 ashare-platform（8000端口）取数的日期必须统一
@@ -116,7 +133,10 @@ run_agent() {
     # 提取 frontmatter 之后的正文作为 system prompt（跳过两个 --- 分隔符）
     system_prompt="$(awk 'BEGIN{n=0} /^---/{n++; next} n>=2{print}' "$agent_md")"
 
-    # 将 frontmatter 中的简短模型名映射到完整 provider/id
+    # 命令行 --model 覆盖 frontmatter 中的模型
+    [[ -n "$MODEL_OVERRIDE" ]] && model="$MODEL_OVERRIDE"
+
+    # 将简短模型名映射到完整 provider/id
     case "$model" in
         kimi-k2-thinking) model="kimi-coding/kimi-k2-thinking" ;;
     esac
@@ -166,6 +186,8 @@ echo "PiTradingAgents — A股题材交易分析 Pipeline"
 echo "交易日期: $TRADE_DATE"
 echo "输出目录: $REPORT_DIR"
 $VERBOSE && echo "模式: verbose（实时输出 Agent 推理过程）"
+[[ -n "$STAGES" ]]        && echo "执行阶段: $STAGES"
+[[ -n "$MODEL_OVERRIDE" ]] && echo "模型覆盖: $MODEL_OVERRIDE"
 echo "=============================================="
 
 # Skill 目录
@@ -181,6 +203,8 @@ if [[ -d "$CHROME_CDP_SKILL" && -f "$CHROME_CDP_SKILL/scripts/sites/google/searc
 fi
 
 # ======== 阶段 1: 分析团队（并行） ========
+
+if should_run_stage 1; then
 
 echo ""
 echo "=== 阶段 1: 分析团队（并行执行） ==="
@@ -262,12 +286,9 @@ wait $PID_TREND || true
 wait $PID_CATALYST || true
 echo "阶段 1 完成"
 
-# ======== 阶段 2: 市场环境辩论（顺序） ========
+fi  # end should_run_stage 1
 
-echo ""
-echo "=== 阶段 2: 市场环境辩论（顺序执行） ==="
-
-# 拼接 4 份报告到临时文件（P0-1 修复）
+# 拼接 4 份报告到临时文件（阶段 2/3 共用；无论是否跳过阶段 1 都从已有文件读取）
 REPORTS_CTX="$TMP_DIR/reports-context.txt"
 > "$REPORTS_CTX"
 for report in "$REPORT_DIR"/0{1,2,3,4}-*-report.md; do
@@ -276,6 +297,13 @@ for report in "$REPORT_DIR"/0{1,2,3,4}-*-report.md; do
         cat "$report" >> "$REPORTS_CTX"
     fi
 done
+
+# ======== 阶段 2: 市场环境辩论（顺序） ========
+
+if should_run_stage 2; then
+
+echo ""
+echo "=== 阶段 2: 市场环境辩论（顺序执行） ==="
 
 # 1. 看多辩手（P0-1 修复：使用临时 prompt 文件）
 echo "[辩论] 看多辩手构建论据..."
@@ -332,12 +360,9 @@ run_agent "市场裁判" "$REPORT_DIR/05-market-debate.md" "$PROJECT_ROOT/agents
 
 echo "阶段 2 完成"
 
-# ======== 阶段 3: 题材辩论（顺序） ========
+fi  # end should_run_stage 2
 
-echo ""
-echo "=== 阶段 3: 题材辩论（顺序执行） ==="
-
-# 从市场辩论结果中提取 TOP_THEMES（P0-3 修复：更健壮的匹配）
+# 从市场辩论结果中提取 TOP_THEMES（阶段 3 共用；无论是否跳过阶段 2 都从已有文件读取）
 TOP_THEMES=""
 if [[ -f "$REPORT_DIR/05-market-debate.md" ]]; then
     # 放宽匹配：支持前导空格、中英文冒号
@@ -355,11 +380,19 @@ if [[ -z "$TOP_THEMES" ]]; then
     # 暂时使用空列表，让后续处理生成提示
 fi
 
+# ======== 阶段 3: 题材辩论（顺序） ========
+
+if should_run_stage 3; then
+
+echo ""
+echo "=== 阶段 3: 题材辩论（顺序执行） ==="
+
 # 题材辩论计数器
 THEME_IDX=0
 
 # 对每个题材进行辩论
-while IFS= read -r theme; do
+# 注意：用 fd 3 传入题材列表，避免循环内部 pi 命令读取 stdin 时把剩余题材"吃掉"
+while IFS= read -r theme <&3; do
     [[ -z "$theme" ]] && continue
     
     THEME_IDX=$((THEME_IDX + 1))
@@ -407,7 +440,7 @@ while IFS= read -r theme; do
     else
         run_agent "题材${THEME_IDX}看空" "$REPORT_DIR/06b-bear-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" "@$THEME_BEAR_PROMPT" || echo "  [警告] 题材 $theme 看空辩手执行失败"
     fi
-done <<< "$TOP_THEMES"
+done 3<<< "$TOP_THEMES"
 
 # 如果没有任何题材被处理，生成提示
 if [[ $THEME_IDX -eq 0 ]]; then
@@ -460,7 +493,11 @@ fi
 
 echo "阶段 3 完成"
 
+fi  # end should_run_stage 3
+
 # ======== 阶段 4: 最终决策 ========
+
+if should_run_stage 4; then
 
 echo ""
 echo "=== 阶段 4: 最终决策 ==="
@@ -502,6 +539,8 @@ run_agent "投资经理" "$REPORT_DIR/07-final-report.md" "$PROJECT_ROOT/agents/
 }
 
 echo "阶段 4 完成"
+
+fi  # end should_run_stage 4
 
 # ======== 完成 ========
 

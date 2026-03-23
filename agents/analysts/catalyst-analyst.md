@@ -32,13 +32,11 @@ model: kimi-k2-thinking
 
 ### 2. chrome-cdp Skill 脚本（深度研究）
 
-脚本路径：`~/.agents/skills/chrome-cdp/scripts/sites/`
-
 | 渠道 | 搜索脚本 | 阅读脚本 |
 |------|---------|---------|
-| Google | `google/search.sh <query>` | 搜索结果中包含链接，可直接阅读 |
-| 淘股吧 | `taoguba/search.sh <query>` | `taoguba/open-post.sh <url>` |
-| 雪球 | `xueqiu/search.sh <query>` | `xueqiu/open-post.sh <url>` |
+| Google | `bash ~/.agents/skills/chrome-cdp/scripts/sites/google/search.sh <query>` | 搜索结果中包含链接，可直接阅读 |
+| 淘股吧 | `bash ~/.agents/skills/chrome-cdp/scripts/sites/taoguba/search.sh <query>` | `bash ~/.agents/skills/chrome-cdp/scripts/sites/taoguba/open-post.sh <url>` |
+| 雪球 | `bash ~/.agents/skills/chrome-cdp/scripts/sites/xueqiu/search.sh <query>` | `bash ~/.agents/skills/chrome-cdp/scripts/sites/xueqiu/open-post.sh <url>` |
 
 **注意**：如果 Chrome 浏览器不可用或脚本返回错误，请记录该情况并在报告中注明"Chrome 不可用，本次分析跳过深度研究"。
 
