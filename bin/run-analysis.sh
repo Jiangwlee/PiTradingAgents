@@ -61,30 +61,54 @@ sys.stdout.write(text)
 " "$1"
 }
 
-# Agent 执行封装：处理输出重定向和 verbose 模式
-# 用法: run_agent <label> <output_file> [pi args...]
+# Agent 执行封装：从 agent .md 解析 frontmatter，正确传递 --system-prompt/--model/--tools
+# 用法: run_agent <label> <output_file> <agent_md> [--skill <dir>]... <message|@file>
+#
+# 参照 chrome-cdp-skill/agents/bin/ 的调用模式：
+#   awk 从 agent .md 提取 model、tools、system prompt，通过 pi 参数传入，
+#   避免 LLM 误将 agent .md 路径当做消息处理。
 #
 # 非 verbose 模式: pi --print，只输出最终文本到报告文件
-# verbose 模式:    pi --mode json，实时显示 tool calls 和流式文本，完成后提取最终文本
+# verbose 模式:    pi --mode json | pi-watch，实时显示 tool calls 和流式文本
 run_agent() {
     local label="$1"
     local output_file="$2"
-    shift 2
+    local agent_md="$3"
+    shift 3
+    # 剩余 $@ = [--skill <dir>...] <message 或 @file>
+
+    # 从 agent .md frontmatter 解析 model 和 tools
+    local model tools system_prompt
+    model="$(awk -F': ' '/^model:/{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}' "$agent_md")"
+    tools="$(awk -F': ' '/^tools:/{gsub(/[[:space:]]/, "", $2); print $2; exit}' "$agent_md")"
+    # 提取 frontmatter 之后的正文作为 system prompt（跳过两个 --- 分隔符）
+    system_prompt="$(awk 'BEGIN{n=0} /^---/{n++; next} n>=2{print}' "$agent_md")"
+
+    # 将 frontmatter 中的简短模型名映射到完整 provider/id
+    case "$model" in
+        kimi-k2-thinking) model="kimi-coding/kimi-k2-thinking" ;;
+    esac
 
     if $VERBOSE; then
         local json_log="$TMP_DIR/$(basename "$output_file" .md).jsonl"
         echo "  [$label] >>>" >&2
-        # tee 保存原始 JSON 到临时文件，pi-watch 实时显示到终端
-        pi --mode json --model "kimi-coding/kimi-k2-thinking" --no-session "$@" \
+        pi --no-session --mode json \
+           --model "$model" \
+           --tools "$tools" \
+           --system-prompt "$system_prompt" \
+           "$@" \
             | tee "$json_log" \
             | pi-watch 2> >(sed "s/^/[$label] /" >&2) \
             | sed "s/^/[$label] /"
         echo "" >&2
         echo "  [$label] <<<" >&2
-        # 从 JSON 事件流提取最终文本写入报告文件
         extract_final_text "$json_log" > "$output_file"
     else
-        pi -p --model "kimi-coding/kimi-k2-thinking" --no-session "$@" \
+        pi --no-session --print \
+           --model "$model" \
+           --tools "$tools" \
+           --system-prompt "$system_prompt" \
+           "$@" \
             > "$output_file" 2>&1
     fi
 }
@@ -111,7 +135,7 @@ echo "启动 4 个分析师..."
 # 1. 情绪分析师
 (
     echo "[分析师] 情绪分析师启动..."
-    run_agent "情绪分析师" "$REPORT_DIR/01-emotion-report.md" --skill "$SKILL_DIR" "$PROJECT_ROOT/agents/analysts/emotion-analyst.md" "$TRADE_DATE" && \
+    run_agent "情绪分析师" "$REPORT_DIR/01-emotion-report.md" "$PROJECT_ROOT/agents/analysts/emotion-analyst.md" --skill "$SKILL_DIR" "$TRADE_DATE" && \
     echo "[分析师] 情绪分析师完成 ✓" || \
     echo "[警告] 情绪分析师执行失败，继续执行其他任务"
 ) &
@@ -120,7 +144,7 @@ PID_EMOTION=$!
 # 2. 题材分析师
 (
     echo "[分析师] 题材分析师启动..."
-    run_agent "题材分析师" "$REPORT_DIR/02-theme-report.md" --skill "$SKILL_DIR" "$PROJECT_ROOT/agents/analysts/theme-analyst.md" "$TRADE_DATE" && \
+    run_agent "题材分析师" "$REPORT_DIR/02-theme-report.md" "$PROJECT_ROOT/agents/analysts/theme-analyst.md" --skill "$SKILL_DIR" "$TRADE_DATE" && \
     echo "[分析师] 题材分析师完成 ✓" || \
     echo "[警告] 题材分析师执行失败，继续执行其他任务"
 ) &
@@ -129,7 +153,7 @@ PID_THEME=$!
 # 3. 趋势分析师
 (
     echo "[分析师] 趋势分析师启动..."
-    run_agent "趋势分析师" "$REPORT_DIR/03-trend-report.md" --skill "$SKILL_DIR" "$PROJECT_ROOT/agents/analysts/trend-analyst.md" "$TRADE_DATE" && \
+    run_agent "趋势分析师" "$REPORT_DIR/03-trend-report.md" "$PROJECT_ROOT/agents/analysts/trend-analyst.md" --skill "$SKILL_DIR" "$TRADE_DATE" && \
     echo "[分析师] 趋势分析师完成 ✓" || \
     echo "[警告] 趋势分析师执行失败，继续执行其他任务"
 ) &
@@ -140,7 +164,7 @@ PID_TREND=$!
     echo "[分析师] 催化剂分析师启动..."
     if [[ -d "$CHROME_CDP_SKILL" && -f "$CHROME_CDP_SKILL/scripts/sites/google/search.sh" ]]; then
         echo "  Chrome CDP Skill 可用，启动深度研究..."
-        run_agent "催化剂分析师" "$REPORT_DIR/04-catalyst-report.md" --skill "$SKILL_DIR" --skill "$CHROME_CDP_SKILL" "$PROJECT_ROOT/agents/analysts/catalyst-analyst.md" "$TRADE_DATE" && \
+        run_agent "催化剂分析师" "$REPORT_DIR/04-catalyst-report.md" "$PROJECT_ROOT/agents/analysts/catalyst-analyst.md" --skill "$SKILL_DIR" --skill "$CHROME_CDP_SKILL" "$TRADE_DATE" && \
         echo "[分析师] 催化剂分析师完成 ✓" || \
         echo "[警告] 催化剂分析师执行失败，继续执行其他任务"
     else
