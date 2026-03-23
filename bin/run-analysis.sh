@@ -40,22 +40,52 @@ mkdir -p "$REPORT_DIR"
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-# Pi CLI 调用函数
-run_pi() {
-    pi -p --model "kimi-coding/kimi-k2-thinking" --no-session "$@"
+# 从 pi JSON 事件流中提取最终一轮 LLM 文本
+# 多轮 agent 对话中取最后一条 message 的完整文本
+extract_final_text() {
+    python3 -c "
+import json, sys
+text = ''
+for line in open(sys.argv[1]):
+    try:
+        ev = json.loads(line.strip())
+        tp = ev.get('type', '')
+        if tp in ('message_update', 'message_end'):
+            parts = ev.get('message', {}).get('content', [])
+            t = ''.join(p.get('text', '') for p in parts if p.get('type') == 'text')
+            if t:
+                text = t
+    except Exception:
+        pass
+sys.stdout.write(text)
+" "$1"
 }
 
 # Agent 执行封装：处理输出重定向和 verbose 模式
-# 用法: run_agent <label> <output_file> [run_pi args...]
+# 用法: run_agent <label> <output_file> [pi args...]
+#
+# 非 verbose 模式: pi --print，只输出最终文本到报告文件
+# verbose 模式:    pi --mode json，实时显示 tool calls 和流式文本，完成后提取最终文本
 run_agent() {
     local label="$1"
     local output_file="$2"
     shift 2
 
     if $VERBOSE; then
-        run_pi "$@" 2>&1 | tee "$output_file" | sed "s/^/[$label] /"
+        local json_log="$TMP_DIR/$(basename "$output_file" .md).jsonl"
+        echo "  [$label] >>>" >&2
+        # tee 保存原始 JSON 到临时文件，pi-watch 实时显示到终端
+        pi --mode json --model "kimi-coding/kimi-k2-thinking" --no-session "$@" \
+            | tee "$json_log" \
+            | pi-watch 2> >(sed "s/^/[$label] /" >&2) \
+            | sed "s/^/[$label] /"
+        echo "" >&2
+        echo "  [$label] <<<" >&2
+        # 从 JSON 事件流提取最终文本写入报告文件
+        extract_final_text "$json_log" > "$output_file"
     else
-        run_pi "$@" > "$output_file" 2>&1
+        pi -p --model "kimi-coding/kimi-k2-thinking" --no-session "$@" \
+            > "$output_file" 2>&1
     fi
 }
 
