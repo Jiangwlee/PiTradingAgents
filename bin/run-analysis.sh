@@ -341,10 +341,10 @@ echo "=== 阶段 3: 题材辩论（顺序执行） ==="
 TOP_THEMES=""
 if [[ -f "$REPORT_DIR/05-market-debate.md" ]]; then
     # 放宽匹配：支持前导空格、中英文冒号
-    TOP_THEMES_LINE=$(grep -iE '^\s*TOP_THEMES\s*[:：]' "$REPORT_DIR/05-market-debate.md" 2>/dev/null | head -1 || true)
+    TOP_THEMES_LINE=$(grep -a -iE '^\s*TOP_THEMES\s*[:：]' "$REPORT_DIR/05-market-debate.md" 2>/dev/null | head -1 || true)
     if [[ -n "$TOP_THEMES_LINE" ]]; then
-        # 支持中英文冒号和中英文逗号
-        TOP_THEMES=$(echo "$TOP_THEMES_LINE" | sed -E 's/^[^:：]*[:：]//' | tr '，,' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$')
+        # 支持中英文冒号和中英文逗号；用 sed 按字符分割（tr 按字节处理会破坏 UTF-8 多字节序列）
+        TOP_THEMES=$(echo "$TOP_THEMES_LINE" | sed -E 's/^[^:：]*[:：]//' | sed 's/[，,]/\n/g' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -a -v '^$')
     fi
 fi
 
