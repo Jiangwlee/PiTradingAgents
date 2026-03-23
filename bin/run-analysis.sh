@@ -174,6 +174,12 @@ SKILL_DIR="$PROJECT_ROOT/skills/ashare-data"
 # Chrome CDP Skill 路径
 CHROME_CDP_SKILL="$HOME/.agents/skills/chrome-cdp"
 
+# 检查 Chrome CDP 是否可用（催化剂分析师 + 辩手网络研究均需要）
+CHROME_AVAILABLE=false
+if [[ -d "$CHROME_CDP_SKILL" && -f "$CHROME_CDP_SKILL/scripts/sites/google/search.sh" ]]; then
+    CHROME_AVAILABLE=true
+fi
+
 # ======== 阶段 1: 分析团队（并行） ========
 
 echo ""
@@ -281,9 +287,11 @@ BULL_PROMPT="$TMP_DIR/bull-prompt.txt"
     cat "$REPORTS_CTX"
 } > "$BULL_PROMPT"
 
-run_agent "看多辩手" "$REPORT_DIR/05a-bull-argument.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" "@$BULL_PROMPT" || {
-    echo "[警告] 看多辩手执行失败"
-}
+if $CHROME_AVAILABLE; then
+    run_agent "看多辩手" "$REPORT_DIR/05a-bull-argument.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" --skill "$CHROME_CDP_SKILL" "@$BULL_PROMPT" || echo "[警告] 看多辩手执行失败"
+else
+    run_agent "看多辩手" "$REPORT_DIR/05a-bull-argument.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" "@$BULL_PROMPT" || echo "[警告] 看多辩手执行失败"
+fi
 
 # 2. 看空辩手（P0-1 修复：使用临时 prompt 文件）
 echo "[辩论] 看空辩手构建论据..."
@@ -298,9 +306,11 @@ BEAR_PROMPT="$TMP_DIR/bear-prompt.txt"
     cat "$REPORT_DIR/05a-bull-argument.md" 2>/dev/null || echo "无"
 } > "$BEAR_PROMPT"
 
-run_agent "看空辩手" "$REPORT_DIR/05b-bear-argument.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" "@$BEAR_PROMPT" || {
-    echo "[警告] 看空辩手执行失败"
-}
+if $CHROME_AVAILABLE; then
+    run_agent "看空辩手" "$REPORT_DIR/05b-bear-argument.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" --skill "$CHROME_CDP_SKILL" "@$BEAR_PROMPT" || echo "[警告] 看空辩手执行失败"
+else
+    run_agent "看空辩手" "$REPORT_DIR/05b-bear-argument.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" "@$BEAR_PROMPT" || echo "[警告] 看空辩手执行失败"
+fi
 
 # 3. 市场裁判（P0-1 修复：使用临时 prompt 文件）
 echo "[裁判] 市场环境裁判综合判定..."
@@ -369,9 +379,11 @@ while IFS= read -r theme; do
         cat "$REPORT_DIR/05-market-debate.md" 2>/dev/null || echo "无"
     } > "$THEME_BULL_PROMPT"
     
-    run_agent "题材${THEME_IDX}看多" "$REPORT_DIR/06a-bull-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" "@$THEME_BULL_PROMPT" || {
-        echo "  [警告] 题材 $theme 看多辩手执行失败"
-    }
+    if $CHROME_AVAILABLE; then
+        run_agent "题材${THEME_IDX}看多" "$REPORT_DIR/06a-bull-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" --skill "$CHROME_CDP_SKILL" "@$THEME_BULL_PROMPT" || echo "  [警告] 题材 $theme 看多辩手执行失败"
+    else
+        run_agent "题材${THEME_IDX}看多" "$REPORT_DIR/06a-bull-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" "@$THEME_BULL_PROMPT" || echo "  [警告] 题材 $theme 看多辩手执行失败"
+    fi
     
     # 题材看空辩论（P0-1 修复：使用临时 prompt 文件）
     echo "  ├─ 看空辩手..."
@@ -390,9 +402,11 @@ while IFS= read -r theme; do
         cat "$REPORT_DIR/06a-bull-${THEME_IDX}.md" 2>/dev/null || echo "无"
     } > "$THEME_BEAR_PROMPT"
     
-    run_agent "题材${THEME_IDX}看空" "$REPORT_DIR/06b-bear-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" "@$THEME_BEAR_PROMPT" || {
-        echo "  [警告] 题材 $theme 看空辩手执行失败"
-    }
+    if $CHROME_AVAILABLE; then
+        run_agent "题材${THEME_IDX}看空" "$REPORT_DIR/06b-bear-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" --skill "$CHROME_CDP_SKILL" "@$THEME_BEAR_PROMPT" || echo "  [警告] 题材 $theme 看空辩手执行失败"
+    else
+        run_agent "题材${THEME_IDX}看空" "$REPORT_DIR/06b-bear-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" "@$THEME_BEAR_PROMPT" || echo "  [警告] 题材 $theme 看空辩手执行失败"
+    fi
 done <<< "$TOP_THEMES"
 
 # 如果没有任何题材被处理，生成提示
