@@ -129,8 +129,8 @@ run_agent() {
             题材分析师)       color="32"  ;;  # green
             趋势分析师)       color="33"  ;;  # yellow
             催化剂分析师)     color="35"  ;;  # magenta
-            看多辩手|题材*看多) color="92" ;;  # bright green (多)
-            看空辩手|题材*看空) color="91" ;;  # bright red   (空)
+            看多辩手|题材*看多) color="91" ;;  # bright red   (多/涨)
+            看空辩手|题材*看空) color="92" ;;  # bright green (空/跌)
             市场裁判)         color="34"  ;;  # blue
             题材裁判)         color="96"  ;;  # bright cyan
             投资经理)         color="97"  ;;  # bright white
