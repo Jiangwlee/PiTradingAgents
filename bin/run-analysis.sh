@@ -122,18 +122,34 @@ run_agent() {
     esac
 
     if $VERBOSE; then
+        # 按角色分配颜色（只着色 [label] 部分）
+        local ESC=$'\033' color
+        case "$label" in
+            情绪分析师)       color="36"  ;;  # cyan
+            题材分析师)       color="32"  ;;  # green
+            趋势分析师)       color="33"  ;;  # yellow
+            催化剂分析师)     color="35"  ;;  # magenta
+            看多辩手|题材*看多) color="92" ;;  # bright green (多)
+            看空辩手|题材*看空) color="91" ;;  # bright red   (空)
+            市场裁判)         color="34"  ;;  # blue
+            题材裁判)         color="96"  ;;  # bright cyan
+            投资经理)         color="97"  ;;  # bright white
+            *)                color="37"  ;;  # white
+        esac
+        local lc="${ESC}[${color}m[${label}]${ESC}[0m"
+
         local json_log="$TMP_DIR/$(basename "$output_file" .md).jsonl"
-        echo "  [$label] >>>" >&2
+        echo "  ${lc} >>>" >&2
         pi --no-session --mode json \
            --model "$model" \
            --tools "$tools" \
            --system-prompt "$system_prompt" \
            "$@" \
             | tee "$json_log" \
-            | pi-watch 2> >(sed "s/^/[$label] /" >&2) \
-            | sed "s/^/[$label] /"
+            | pi-watch 2> >(sed "s/^/${lc} /" >&2) \
+            | sed "s/^/${lc} /"
         echo "" >&2
-        echo "  [$label] <<<" >&2
+        echo "  ${lc} <<<" >&2
         extract_final_text "$json_log" > "$output_file"
     else
         pi --no-session --print \
