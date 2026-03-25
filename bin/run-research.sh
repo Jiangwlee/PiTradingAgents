@@ -185,37 +185,22 @@ echo ""
 
 PI_ARGS=(
     --no-session
+    --mode text
     --model "$MODEL"
-    --tools "$TOOLS"
     --system-prompt "$SYSTEM_PROMPT"
     --skill "$PROJECT_ROOT/skills/ashare-data"
     "@$PROMPT_FILE"
 )
 
 if $VERBOSE; then
-    JSON_LOG="$TMP_DIR/research.jsonl"
-    pi --mode json "${PI_ARGS[@]}" \
-        | tee "$JSON_LOG" \
-        | pi-watch 2>&1
-    # 从 JSON 事件流提取最终文本写入报告
-    python3 -c "
-import json, sys
-text = ''
-for line in open(sys.argv[1]):
-    try:
-        ev = json.loads(line.strip())
-        tp = ev.get('type', '')
-        if tp in ('message_update', 'message_end'):
-            parts = ev.get('message', {}).get('content', [])
-            t = ''.join(p.get('text', '') for p in parts if p.get('type') == 'text')
-            if t:
-                text = t
-    except Exception:
-        pass
-print(text, end='')
-" "$JSON_LOG" > "$OUTPUT_FILE"
+    pi "${PI_ARGS[@]}" 2>/dev/null | tee "$OUTPUT_FILE"
 else
-    pi "${PI_ARGS[@]}" --print > "$OUTPUT_FILE" 2>&1
+    pi "${PI_ARGS[@]}" > "$OUTPUT_FILE" 2>/dev/null
+fi
+
+if [[ ! -s "$OUTPUT_FILE" ]]; then
+    echo "[错误] Agent 未生成报告文件: $OUTPUT_FILE" >&2
+    exit 1
 fi
 
 echo ""
