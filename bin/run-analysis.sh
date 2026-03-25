@@ -13,6 +13,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # 使用项目 venv 的 Python（确保 jieba/rank-bm25 可用）
 PYTHON="$PROJECT_ROOT/.venv/bin/python3"
 
+# markdown-to-anything 转换脚本
+CONVERT_PY="$HOME/Projects/oh-my-superpowers/skills/markdown-to-anything/scripts/convert.py"
+
 # 运行时目录（统一放到 ~/.local/share/PiTradingAgents）
 PITA_HOME="${PITA_HOME:-$HOME/.local/share/PiTradingAgents}"
 PITA_DATA_DIR="${PITA_DATA_DIR:-$PITA_HOME/data}"
@@ -625,6 +628,24 @@ run_agent "投资经理" "$REPORT_DIR/07-final-report.md" "$PROJECT_ROOT/agents/
     echo "[警告] 投资经理执行失败"
 }
 
+# 重命名最终报告并生成 PDF
+if [[ -f "$REPORT_DIR/07-final-report.md" ]]; then
+    TIMESTAMP=$(date +%H%M%S)
+    FINAL_NAME="A股题材交易决策-${TRADE_DATE}-${TIMESTAMP}"
+    mv "$REPORT_DIR/07-final-report.md" "$REPORT_DIR/${FINAL_NAME}.md"
+    echo "最终报告已重命名: ${FINAL_NAME}.md"
+
+    if [[ -f "$CONVERT_PY" ]]; then
+        echo "正在生成 PDF..."
+        python3 "$CONVERT_PY" "$REPORT_DIR/${FINAL_NAME}.md" \
+            --mode report --format pdf --same-dir --stdout-manifest 2>/dev/null \
+            | python3 -c "import json,sys; m=json.load(sys.stdin); print('PDF 已生成:', m['files'][0] if m.get('ok') and m.get('files') else '失败')" \
+            || echo "[警告] PDF 生成失败，仅保留 Markdown"
+    else
+        echo "[警告] markdown-to-anything 不可用，跳过 PDF 生成"
+    fi
+fi
+
 echo "阶段 4 完成"
 
 fi  # end should_run_stage 4
@@ -644,10 +665,7 @@ echo ""
 echo "=============================================="
 echo "Pipeline 执行完成！"
 echo "=============================================="
-echo "最终报告路径: $REPORT_DIR/07-final-report.md"
+echo "报告目录: $REPORT_DIR"
 echo ""
 echo "生成的所有报告："
-ls -la "$REPORT_DIR"/*.md
-echo ""
-echo "查看最终报告:"
-echo "  cat $REPORT_DIR/07-final-report.md"
+ls -la "$REPORT_DIR"/*.md "$REPORT_DIR"/*.pdf 2>/dev/null || ls -la "$REPORT_DIR"/*.md 2>/dev/null

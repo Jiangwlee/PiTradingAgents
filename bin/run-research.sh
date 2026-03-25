@@ -10,6 +10,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 PITA_HOME="${PITA_HOME:-$HOME/.local/share/PiTradingAgents}"
+
+# markdown-to-anything 转换脚本
+CONVERT_PY="$HOME/Projects/oh-my-superpowers/skills/markdown-to-anything/scripts/convert.py"
 PITA_DATA_DIR="${PITA_DATA_DIR:-$PITA_HOME/data}"
 REPORTS_ROOT="$PITA_DATA_DIR/reports"
 API_URL="${ASHARE_API_URL:-http://127.0.0.1:8000}"
@@ -73,7 +76,13 @@ resolve_trade_date() {
 TRADE_DATE=$(resolve_trade_date)
 REPORT_DIR="$REPORTS_ROOT/$TRADE_DATE"
 mkdir -p "$REPORT_DIR"
-OUTPUT_FILE="$REPORT_DIR/stock-research-$TRADE_DATE.md"
+TIMESTAMP=$(date +%H%M%S)
+if [[ -n "$STOCKS" ]]; then
+    REPORT_NAME="个股深度研究-${TRADE_DATE}-${TIMESTAMP}"
+else
+    REPORT_NAME="强势股研究-${TRADE_DATE}-${TIMESTAMP}"
+fi
+OUTPUT_FILE="$REPORT_DIR/${REPORT_NAME}.md"
 
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -212,5 +221,17 @@ fi
 echo ""
 echo "=============================================="
 echo "研究完成 ✓"
-echo "报告：$OUTPUT_FILE"
+echo "Markdown: $OUTPUT_FILE"
+
+# 生成 PDF
+if [[ -f "$OUTPUT_FILE" && -f "$CONVERT_PY" ]]; then
+    echo "正在生成 PDF..."
+    python3 "$CONVERT_PY" "$OUTPUT_FILE" \
+        --mode report --format pdf --same-dir --stdout-manifest 2>/dev/null \
+        | python3 -c "import json,sys; m=json.load(sys.stdin); print('PDF:     ', m['files'][0] if m.get('ok') and m.get('files') else '生成失败')" \
+        || echo "[警告] PDF 生成失败，仅保留 Markdown"
+elif [[ ! -f "$CONVERT_PY" ]]; then
+    echo "[警告] markdown-to-anything 不可用，跳过 PDF 生成"
+fi
+
 echo "=============================================="
