@@ -256,10 +256,8 @@ def query_data(
         border_style="cyan"
     ))
     
-    # 构建参数列表
-    cmd_args = [subcommand] + args
-    
     # 执行数据脚本（直接调用 bash 脚本）
+    # 注意：args 已经包含子命令之后的所有参数，不需要再添加 subcommand
     project_root = _resolve_project_root()
     scripts_dir = project_root / "scripts"
     
@@ -296,7 +294,7 @@ def query_data(
     
     try:
         result = subprocess.run(
-            ["bash", str(script_path)] + cmd_args,
+            ["bash", str(script_path)] + args,
             cwd=str(project_root),
             env=env,
             capture_output=False,

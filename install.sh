@@ -324,6 +324,9 @@ upgrade() {
     rm -rf "$PITA_HOME/agents"
     rm -rf "$PITA_HOME/bin"
     
+    # 重新创建目录结构
+    mkdir -p "$PITA_HOME"/{bin,cli,scripts,agents,skills}
+    
     log_info "Installing new version..."
     copy_code
     setup_venv
