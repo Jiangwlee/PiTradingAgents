@@ -10,8 +10,24 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# 使用项目 venv 的 Python（确保 jieba/rank-bm25 可用）
+PYTHON="$PROJECT_ROOT/.venv/bin/python3"
+
+# 运行时目录（统一放到 ~/.local/share/PiTradingAgents）
+PITA_HOME="${PITA_HOME:-$HOME/.local/share/PiTradingAgents}"
+PITA_DATA_DIR="${PITA_DATA_DIR:-$PITA_HOME/data}"
+PITA_CONFIG_DIR="${PITA_CONFIG_DIR:-$PITA_HOME/config}"
+REPORTS_ROOT="$PITA_DATA_DIR/reports"
+MEMORY_DIR="$PITA_DATA_DIR/memory"
+mkdir -p "$REPORTS_ROOT" "$MEMORY_DIR" "$PITA_CONFIG_DIR"
+
 # API 地址
 API_URL="${ASHARE_API_URL:-http://127.0.0.1:8000}"
+
+# 初始化记忆变量（用于阶段 2/3，防止跳过阶段 2 时报错）
+BULL_MEMORY=""
+BEAR_MEMORY=""
+JUDGE_MEMORY=""
 
 # 解析命令行参数
 VERBOSE=false
@@ -82,7 +98,7 @@ else
 fi
 
 # 输出目录
-REPORT_DIR="$PROJECT_ROOT/data/reports/$TRADE_DATE"
+REPORT_DIR="$REPORTS_ROOT/$TRADE_DATE"
 mkdir -p "$REPORT_DIR"
 
 # 创建临时目录（P0-1 修复）
@@ -92,7 +108,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 # 从 pi JSON 事件流中提取最终一轮 LLM 文本
 # 多轮 agent 对话中取最后一条 message 的完整文本
 extract_final_text() {
-    python3 -c "
+    $PYTHON -c "
 import json, sys
 text = ''
 for line in open(sys.argv[1]):
@@ -111,7 +127,7 @@ sys.stdout.write(text)
 }
 
 # Agent 执行封装：从 agent .md 解析 frontmatter，正确传递 --system-prompt/--model/--tools
-# 用法: run_agent <label> <output_file> <agent_md> [--skill <dir>]... <message|@file>
+# 用法: run_agent <label> <output_file> <agent_md> <message|@file>
 #
 # 参照 chrome-cdp-skill/agents/bin/ 的调用模式：
 #   awk 从 agent .md 提取 model、tools、system prompt，通过 pi 参数传入，
@@ -126,6 +142,31 @@ run_agent() {
     shift 3
     # 剩余 $@ = [--skill <dir>...] <message 或 @file>
 
+    local append_system_prompt=""
+    local passthrough=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --append-system-prompt-file)
+                local append_file="${2:-}"
+                [[ -z "$append_file" ]] && {
+                    echo "[错误] --append-system-prompt-file 缺少路径" >&2
+                    return 1
+                }
+                local append_content
+                append_content="$(cat "$append_file")"
+                if [[ -n "$append_system_prompt" ]]; then
+                    append_system_prompt+=$'\n\n'
+                fi
+                append_system_prompt+="$append_content"
+                shift 2
+                ;;
+            *)
+                passthrough+=("$1")
+                shift
+                ;;
+        esac
+    done
+
     # 从 agent .md frontmatter 解析 model 和 tools
     local model tools system_prompt
     model="$(awk -F': ' '/^model:/{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}' "$agent_md")"
@@ -139,7 +180,19 @@ run_agent() {
     # 将简短模型名映射到完整 provider/id
     case "$model" in
         kimi-k2-thinking) model="kimi-coding/kimi-k2-thinking" ;;
+        qwen3.5-35b)      model="litellm-local/qwen3.5-35b" ;;
     esac
+
+    local pi_args=(
+        --model "$model"
+        --tools "$tools"
+        --system-prompt "$system_prompt"
+        --skill "$PROJECT_ROOT/skills/ashare-data"
+    )
+    if [[ -n "$append_system_prompt" ]]; then
+        pi_args+=(--append-system-prompt "$append_system_prompt")
+    fi
+    pi_args+=("${passthrough[@]}")
 
     if $VERBOSE; then
         # 按角色分配颜色（只着色 [label] 部分）
@@ -161,10 +214,7 @@ run_agent() {
         local json_log="$TMP_DIR/$(basename "$output_file" .md).jsonl"
         echo "  ${lc} >>>" >&2
         pi --no-session --mode json \
-           --model "$model" \
-           --tools "$tools" \
-           --system-prompt "$system_prompt" \
-           "$@" \
+           "${pi_args[@]}" \
             | tee "$json_log" \
             | pi-watch 2> >(sed "s/^/${lc} /" >&2) \
             | sed "s/^/${lc} /"
@@ -173,10 +223,7 @@ run_agent() {
         extract_final_text "$json_log" > "$output_file"
     else
         pi --no-session --print \
-           --model "$model" \
-           --tools "$tools" \
-           --system-prompt "$system_prompt" \
-           "$@" \
+           "${pi_args[@]}" \
             > "$output_file" 2>&1
     fi
 }
@@ -190,17 +237,8 @@ $VERBOSE && echo "模式: verbose（实时输出 Agent 推理过程）"
 [[ -n "$MODEL_OVERRIDE" ]] && echo "模型覆盖: $MODEL_OVERRIDE"
 echo "=============================================="
 
-# Skill 目录
-SKILL_DIR="$PROJECT_ROOT/skills/ashare-data"
-
-# Chrome CDP Skill 路径
+# Chrome CDP Skill 路径（仅用于本地可用性检查；不再通过 --skill 显式传入）
 CHROME_CDP_SKILL="$HOME/.agents/skills/chrome-cdp"
-
-# 检查 Chrome CDP 是否可用（催化剂分析师 + 辩手网络研究均需要）
-CHROME_AVAILABLE=false
-if [[ -d "$CHROME_CDP_SKILL" && -f "$CHROME_CDP_SKILL/scripts/sites/google/search.sh" ]]; then
-    CHROME_AVAILABLE=true
-fi
 
 # ======== 阶段 1: 分析团队（并行） ========
 
@@ -213,7 +251,7 @@ echo "启动 4 个分析师..."
 # 1. 情绪分析师
 (
     echo "[分析师] 情绪分析师启动..."
-    run_agent "情绪分析师" "$REPORT_DIR/01-emotion-report.md" "$PROJECT_ROOT/agents/analysts/emotion-analyst.md" --skill "$SKILL_DIR" "$TRADE_DATE" && \
+    run_agent "情绪分析师" "$REPORT_DIR/01-emotion-report.md" "$PROJECT_ROOT/agents/analysts/emotion-analyst.md" "/skill:ashare-data ${TRADE_DATE}" && \
     echo "[分析师] 情绪分析师完成 ✓" || \
     echo "[警告] 情绪分析师执行失败，继续执行其他任务"
 ) &
@@ -222,7 +260,7 @@ PID_EMOTION=$!
 # 2. 题材分析师
 (
     echo "[分析师] 题材分析师启动..."
-    run_agent "题材分析师" "$REPORT_DIR/02-theme-report.md" "$PROJECT_ROOT/agents/analysts/theme-analyst.md" --skill "$SKILL_DIR" "$TRADE_DATE" && \
+    run_agent "题材分析师" "$REPORT_DIR/02-theme-report.md" "$PROJECT_ROOT/agents/analysts/theme-analyst.md" "/skill:ashare-data ${TRADE_DATE}" && \
     echo "[分析师] 题材分析师完成 ✓" || \
     echo "[警告] 题材分析师执行失败，继续执行其他任务"
 ) &
@@ -231,7 +269,7 @@ PID_THEME=$!
 # 3. 趋势分析师
 (
     echo "[分析师] 趋势分析师启动..."
-    run_agent "趋势分析师" "$REPORT_DIR/03-trend-report.md" "$PROJECT_ROOT/agents/analysts/trend-analyst.md" --skill "$SKILL_DIR" "$TRADE_DATE" && \
+    run_agent "趋势分析师" "$REPORT_DIR/03-trend-report.md" "$PROJECT_ROOT/agents/analysts/trend-analyst.md" "/skill:ashare-data ${TRADE_DATE}" && \
     echo "[分析师] 趋势分析师完成 ✓" || \
     echo "[警告] 趋势分析师执行失败，继续执行其他任务"
 ) &
@@ -242,7 +280,7 @@ PID_TREND=$!
     echo "[分析师] 催化剂分析师启动..."
     if [[ -d "$CHROME_CDP_SKILL" && -f "$CHROME_CDP_SKILL/scripts/sites/google/search.sh" ]]; then
         echo "  Chrome CDP Skill 可用，启动深度研究..."
-        run_agent "催化剂分析师" "$REPORT_DIR/04-catalyst-report.md" "$PROJECT_ROOT/agents/analysts/catalyst-analyst.md" --skill "$SKILL_DIR" --skill "$CHROME_CDP_SKILL" "$TRADE_DATE" && \
+        run_agent "催化剂分析师" "$REPORT_DIR/04-catalyst-report.md" "$PROJECT_ROOT/agents/analysts/catalyst-analyst.md" "/skill:ashare-data ${TRADE_DATE}" && \
         echo "[分析师] 催化剂分析师完成 ✓" || \
         echo "[警告] 催化剂分析师执行失败，继续执行其他任务"
     else
@@ -298,6 +336,23 @@ for report in "$REPORT_DIR"/0{1,2,3,4}-*-report.md; do
     fi
 done
 
+# 构建市场情景摘要用于记忆检索（关键词密度高，利于 BM25 匹配）
+SITUATION_SUMMARY=""
+if [[ -f "$REPORT_DIR/01-emotion-report.md" ]]; then
+    # 提取情绪阶段、涨停/跌停数等关键指标作为检索 query
+    SITUATION_SUMMARY=$($PYTHON -c "
+import sys, re
+text = open(sys.argv[1], encoding='utf-8').read()
+# 提取关键行（含数字指标的行）
+lines = []
+for line in text.split('\n'):
+    if re.search(r'(涨停|跌停|封板|炸板|晋级|情绪|冰点|启动|高潮|退潮|主升|分歧)', line):
+        lines.append(line.strip())
+# 截取前 500 字符
+print(' '.join(lines)[:500])
+" "$REPORT_DIR/01-emotion-report.md" 2>/dev/null || echo "")
+fi
+
 # ======== 阶段 2: 市场环境辩论（顺序） ========
 
 if should_run_stage 2; then
@@ -307,26 +362,40 @@ echo "=== 阶段 2: 市场环境辩论（顺序执行） ==="
 
 # 1. 看多辩手（P0-1 修复：使用临时 prompt 文件）
 echo "[辩论] 看多辩手构建论据..."
+BULL_MEMORY=$($PYTHON bin/memory.py --data-dir "$MEMORY_DIR" query --role bull --n 3 \
+    --situation "$SITUATION_SUMMARY" 2>/dev/null || echo "")
+
 BULL_PROMPT="$TMP_DIR/bull-prompt.txt"
 {
     echo "市场环境辩论模式"
     echo ""
+    if [[ -n "$BULL_MEMORY" ]]; then
+        echo "=== 历史经验教训（从类似市场环境中检索） ==="
+        echo "$BULL_MEMORY"
+        echo "请优先吸收其中的改进规则、复盘结论和检索语句，避免重复同类错误。"
+        echo ""
+    fi
     echo "分析报告汇总:"
     cat "$REPORTS_CTX"
 } > "$BULL_PROMPT"
 
-if $CHROME_AVAILABLE; then
-    run_agent "看多辩手" "$REPORT_DIR/05a-bull-argument.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" --skill "$CHROME_CDP_SKILL" "@$BULL_PROMPT" || echo "[警告] 看多辩手执行失败"
-else
-    run_agent "看多辩手" "$REPORT_DIR/05a-bull-argument.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" "@$BULL_PROMPT" || echo "[警告] 看多辩手执行失败"
-fi
+run_agent "看多辩手" "$REPORT_DIR/05a-bull-argument.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" "@$BULL_PROMPT" || echo "[警告] 看多辩手执行失败"
 
 # 2. 看空辩手（P0-1 修复：使用临时 prompt 文件）
 echo "[辩论] 看空辩手构建论据..."
+BEAR_MEMORY=$($PYTHON bin/memory.py --data-dir "$MEMORY_DIR" query --role bear --n 3 \
+    --situation "$SITUATION_SUMMARY" 2>/dev/null || echo "")
+
 BEAR_PROMPT="$TMP_DIR/bear-prompt.txt"
 {
     echo "市场环境辩论模式"
     echo ""
+    if [[ -n "$BEAR_MEMORY" ]]; then
+        echo "=== 历史经验教训（从类似市场环境中检索） ==="
+        echo "$BEAR_MEMORY"
+        echo "请优先吸收其中的改进规则、复盘结论和检索语句，避免重复同类错误。"
+        echo ""
+    fi
     echo "分析报告汇总:"
     cat "$REPORTS_CTX"
     echo ""
@@ -334,16 +403,21 @@ BEAR_PROMPT="$TMP_DIR/bear-prompt.txt"
     cat "$REPORT_DIR/05a-bull-argument.md" 2>/dev/null || echo "无"
 } > "$BEAR_PROMPT"
 
-if $CHROME_AVAILABLE; then
-    run_agent "看空辩手" "$REPORT_DIR/05b-bear-argument.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" --skill "$CHROME_CDP_SKILL" "@$BEAR_PROMPT" || echo "[警告] 看空辩手执行失败"
-else
-    run_agent "看空辩手" "$REPORT_DIR/05b-bear-argument.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" "@$BEAR_PROMPT" || echo "[警告] 看空辩手执行失败"
-fi
+run_agent "看空辩手" "$REPORT_DIR/05b-bear-argument.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" "@$BEAR_PROMPT" || echo "[警告] 看空辩手执行失败"
 
 # 3. 市场裁判（P0-1 修复：使用临时 prompt 文件）
 echo "[裁判] 市场环境裁判综合判定..."
+JUDGE_MEMORY=$($PYTHON bin/memory.py --data-dir "$MEMORY_DIR" query --role judge --n 3 \
+    --situation "$SITUATION_SUMMARY" 2>/dev/null || echo "")
+
 JUDGE_PROMPT="$TMP_DIR/judge-prompt.txt"
 {
+    if [[ -n "$JUDGE_MEMORY" ]]; then
+        echo "=== 历史经验教训（从类似市场环境中检索） ==="
+        echo "$JUDGE_MEMORY"
+        echo "请优先吸收其中的改进规则、复盘结论和检索语句，避免重复同类错误。"
+        echo ""
+    fi
     echo "分析报告汇总:"
     cat "$REPORTS_CTX"
     echo ""
@@ -405,6 +479,12 @@ while IFS= read -r theme <&3; do
         echo "题材辩论模式"
         echo "题材名称: $theme"
         echo ""
+        if [[ -n "$BULL_MEMORY" ]]; then
+            echo "=== 历史经验教训（从类似市场环境中检索） ==="
+            echo "$BULL_MEMORY"
+            echo "请优先吸收其中的改进规则、复盘结论和检索语句，避免重复同类错误。"
+            echo ""
+        fi
         echo "分析报告汇总:"
         cat "$REPORTS_CTX"
         echo ""
@@ -412,11 +492,7 @@ while IFS= read -r theme <&3; do
         cat "$REPORT_DIR/05-market-debate.md" 2>/dev/null || echo "无"
     } > "$THEME_BULL_PROMPT"
     
-    if $CHROME_AVAILABLE; then
-        run_agent "题材${THEME_IDX}看多" "$REPORT_DIR/06a-bull-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" --skill "$CHROME_CDP_SKILL" "@$THEME_BULL_PROMPT" || echo "  [警告] 题材 $theme 看多辩手执行失败"
-    else
-        run_agent "题材${THEME_IDX}看多" "$REPORT_DIR/06a-bull-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" "@$THEME_BULL_PROMPT" || echo "  [警告] 题材 $theme 看多辩手执行失败"
-    fi
+    run_agent "题材${THEME_IDX}看多" "$REPORT_DIR/06a-bull-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" "@$THEME_BULL_PROMPT" || echo "  [警告] 题材 $theme 看多辩手执行失败"
     
     # 题材看空辩论（P0-1 修复：使用临时 prompt 文件）
     echo "  ├─ 看空辩手..."
@@ -425,6 +501,12 @@ while IFS= read -r theme <&3; do
         echo "题材辩论模式"
         echo "题材名称: $theme"
         echo ""
+        if [[ -n "$BEAR_MEMORY" ]]; then
+            echo "=== 历史经验教训（从类似市场环境中检索） ==="
+            echo "$BEAR_MEMORY"
+            echo "请优先吸收其中的改进规则、复盘结论和检索语句，避免重复同类错误。"
+            echo ""
+        fi
         echo "分析报告汇总:"
         cat "$REPORTS_CTX"
         echo ""
@@ -435,11 +517,7 @@ while IFS= read -r theme <&3; do
         cat "$REPORT_DIR/06a-bull-${THEME_IDX}.md" 2>/dev/null || echo "无"
     } > "$THEME_BEAR_PROMPT"
     
-    if $CHROME_AVAILABLE; then
-        run_agent "题材${THEME_IDX}看空" "$REPORT_DIR/06b-bear-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" --skill "$CHROME_CDP_SKILL" "@$THEME_BEAR_PROMPT" || echo "  [警告] 题材 $theme 看空辩手执行失败"
-    else
-        run_agent "题材${THEME_IDX}看空" "$REPORT_DIR/06b-bear-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" "@$THEME_BEAR_PROMPT" || echo "  [警告] 题材 $theme 看空辩手执行失败"
-    fi
+    run_agent "题材${THEME_IDX}看空" "$REPORT_DIR/06b-bear-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" "@$THEME_BEAR_PROMPT" || echo "  [警告] 题材 $theme 看空辩手执行失败"
 done 3<<< "$TOP_THEMES"
 
 # 如果没有任何题材被处理，生成提示
@@ -465,6 +543,12 @@ else
     
     THEME_JUDGE_PROMPT="$TMP_DIR/theme-judge-prompt.txt"
     {
+        if [[ -n "$JUDGE_MEMORY" ]]; then
+            echo "=== 历史经验教训（从类似市场环境中检索） ==="
+            echo "$JUDGE_MEMORY"
+            echo "请优先吸收其中的改进规则、复盘结论和检索语句，避免重复同类错误。"
+            echo ""
+        fi
         echo "市场环境辩论结果:"
         cat "$REPORT_DIR/05-market-debate.md" 2>/dev/null || echo "无"
         echo ""
@@ -513,14 +597,17 @@ for report in "$REPORT_DIR"/*.md; do
     fi
 done
 
-# 读取历史记忆
+# 读取历史记忆（使用 memory.py 语义检索）
+TRADER_MEMORY=$($PYTHON bin/memory.py --data-dir "$MEMORY_DIR" query --role trader --n 5 \
+    --situation "$SITUATION_SUMMARY" 2>/dev/null || echo "")
+
 LESSONS_FILE="$TMP_DIR/lessons.md"
 {
-    echo "历史记忆（最近20条）:"
-    if [[ -f "$PROJECT_ROOT/data/memory/lessons.jsonl" ]]; then
-        tail -20 "$PROJECT_ROOT/data/memory/lessons.jsonl" 2>/dev/null || echo "无历史记忆"
+    if [[ -n "$TRADER_MEMORY" ]]; then
+        echo "=== 历史经验教训（BM25 语义检索） ==="
+        echo "$TRADER_MEMORY"
     else
-        echo "无历史记忆文件"
+        echo "无历史记忆"
     fi
 } > "$LESSONS_FILE"
 
@@ -530,7 +617,7 @@ FINAL_PROMPT="$TMP_DIR/final-prompt.txt"
     echo "所有分析报告:"
     cat "$ALL_REPORTS_CTX"
     echo ""
-    echo "历史记忆（最近20条）:"
+    echo "历史记忆:"
     cat "$LESSONS_FILE"
 } > "$FINAL_PROMPT"
 
@@ -541,6 +628,15 @@ run_agent "投资经理" "$REPORT_DIR/07-final-report.md" "$PROJECT_ROOT/agents/
 echo "阶段 4 完成"
 
 fi  # end should_run_stage 4
+
+# ======== 阶段 5: 状态保存（用于次日复盘） ========
+echo ""
+echo "=== 阶段 5: 保存 Pipeline 状态 ==="
+if $PYTHON bin/save-state.py "$REPORT_DIR" "$TRADE_DATE" > "$REPORT_DIR/state.json" 2>/dev/null; then
+    echo "状态已保存: $REPORT_DIR/state.json"
+else
+    echo "[警告] 状态保存失败，复盘功能将不可用"
+fi
 
 # ======== 完成 ========
 

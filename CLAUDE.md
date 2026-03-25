@@ -19,6 +19,8 @@ PiTradingAgents/
 │   ├── judges/
 │   │   ├── market-judge.md             # 市场环境裁判
 │   │   └── theme-judge.md              # 题材机会裁判
+│   ├── reflection/
+│   │   └── reflector.md                # Reflector Agent — 4步反思框架
 │   └── decision/
 │       └── investment-manager.md       # 投资经理 — 生成最终报告
 │
@@ -29,11 +31,20 @@ PiTradingAgents/
 │       └── references/                 # 情绪周期理论、API 文档
 │
 ├── bin/
-│   └── run-analysis.sh                 # Pipeline Conductor 编排脚本
+│   ├── run-analysis.sh                 # Pipeline Conductor 编排脚本
+│   ├── memory.py                       # BM25+jieba 记忆存储/检索 CLI
+│   ├── save-state.py                   # Pipeline 状态保存（提取预测字段为 state.json）
+│   ├── calc-signals.py                 # 结果信号计算（比较预测 vs 实际涨跌）
+│   ├── extract-reflections.py          # 从 Reflector 输出提取 JSON 反思结果
+│   └── run-reflect.sh                  # 复盘编排脚本（信号计算→反思→记忆写入）
 │
 ├── data/
 │   ├── reports/{YYYY-MM-DD}/           # 每日分析报告输出
-│   └── memory/                         # 记忆/学习存储
+│   └── memory/                         # 角色记忆库（BM25 检索）
+│       ├── bull.jsonl                  # 看多辩手历史教训
+│       ├── bear.jsonl                  # 看空辩手历史教训
+│       ├── judge.jsonl                 # 裁判历史教训
+│       └── trader.jsonl               # 投资经理历史教训
 │
 ├── docs/
 │   ├── theory/                         # 情绪周期理论文档
@@ -52,11 +63,13 @@ PiTradingAgents/
 | 层 | 技术 | 说明 |
 |---|---|---|
 | Agent 框架 | Pi (pi-coding-agent) | .md 文件定义 Agent，YAML frontmatter + system prompt |
-| LLM | kimi-k2-thinking | 所有 Agent 统一使用此模型 |
+| LLM | qwen3.5-35b | 所有 Agent 统一使用此模型 |
 | 数据接口 | ashare-platform (FastAPI) | 本地运行 http://127.0.0.1:8000 |
 | 深度研究 | chrome-cdp Skill | 催化剂分析师通过 Google/淘股吧/雪球搜索和阅读 |
 | 编排 | Shell 脚本 | bin/run-analysis.sh 按 Pipeline 模式调度各 Agent |
 | 语言 | Shell (脚本) | Skills 层为 bash curl wrapper |
+| 记忆检索 | BM25 + jieba | bin/memory.py，中文分词语义匹配历史教训 |
+| Python 包管理 | uv (.venv/) | rank-bm25, jieba；所有 Python 脚本使用 .venv/bin/python3 |
 
 ## 核心依赖
 
@@ -68,13 +81,14 @@ PiTradingAgents/
 - **chrome-cdp Skill** — 安装在 `~/.agents/skills/chrome-cdp/`
 - **jq** — JSON 处理
 - **curl** — API 调用
+- **Python venv (.venv/)** — 记忆系统依赖 rank-bm25 和 jieba，通过 `uv` 管理，使用 `.venv/bin/python3` 调用
 
 ### 外部服务
 
 | 服务 | 地址 | 用途 |
 |---|---|---|
 | ashare-platform API | http://127.0.0.1:8000 | 市场情绪、题材、趋势数据 |
-| Kimi API | 远程 | LLM 推理 |
+| LiteLLM (本地) | litellm-local/qwen3.5-35b | LLM 推理 |
 
 ## 约束
 
@@ -100,19 +114,48 @@ PiTradingAgents/
 name: agent-name
 description: 一句话描述
 tools: bash, read
-model: kimi-k2-thinking
+model: qwen3.5-35b
 ---
 
 # System Prompt 正文
 ...
 ```
 
-### Skill 脚本规范
+### Skill 规范
 
-- 脚本位于 `skills/ashare-data/scripts/`
-- 每个脚本是一个 curl wrapper，接收参数、调用 API、返回 JSON
-- 使用 `ASHARE_API_URL` 环境变量（默认 http://127.0.0.1:8000）
-- 出错时写 stderr 并以非零退出码退出
+#### 职责分离（核心原则）
+
+- **SKILL.md** — 负责说明 HOW：脚本路径、参数、返回格式、错误处理。是唯一事实来源。
+- **Agent .md** — 只说明 WHEN：在什么场景下使用某个 skill，不写具体脚本名或路径。
+- 如果 Agent 当前依赖的脚本行为在 SKILL.md 中未覆盖，应增强 SKILL.md（如新增 `references/commands.md`），而不是在 Agent 里补充。
+
+#### Pi bash 工作目录
+
+Pi 的 bash 工具 CWD 是**项目根目录**（不是 skill 目录）。因此 SKILL.md 中的脚本调用示例应写完整路径：
+
+```bash
+bash skills/ashare-data/scripts/fetch-market-emotion.sh 2026-03-21
+```
+
+验证方法：`pi --no-session --print --tools bash --skill <skill_dir> --system-prompt "run: bash -c 'pwd'" "test"`
+
+#### SKILL.md 质量要求
+
+参照 `/home/bruce/.claude/skills/skill-review/` 的 12 维度 rubric，关键要求：
+
+1. **description 触发公式**：`[能力概述] + "Use when" + [(1)场景 (2)场景 ...]`，缺少 "Use when" 则无法正确触发
+2. **Prerequisite Check 节**：列出外部依赖（API、CLI 工具），提供检测命令，说明失败时停止
+3. **硬约束用 Iron Law 格式**：`NO <禁止行为>. No exceptions.`，不能用软语言（"请不要"、"尽量避免"）
+4. **Guardrails 节**：集中列出最关键的行为约束，用权威语气（NEVER、ALWAYS、Do NOT）
+5. **语言**：指令性内容用英文，中文只用于用户可见的触发短语和示例字符串
+6. **参考文档条件加载**：`If X, read references/x.md`，不无条件列出
+
+#### ashare-data Skill 注意事项
+
+- 所有接口返回**直接 JSON 数组** `[...]`，不要用 `.data` 键访问
+- 不要在脚本输出后追加额外 jq 过滤器（脚本已 `jq .`）
+- `theme_stage` 字段为英文代码，Agent 写报告时必须翻译为中文六阶段名（early→启动、ferment→发酵、main_rise→主升、climax→高潮、middle→分歧、late→退潮）
+- 脚本调用失败时注明"数据获取失败"并继续，不要用 curl 自行重建 API 请求
 
 ## Pipeline 流程
 
@@ -128,6 +171,41 @@ model: kimi-k2-thinking
                              │ (多→空→裁判)    │     └──────────┘
                              └─────────────────┘
 ```
+
+- 阶段 5（save-state.py）在阶段 4 之后自动执行，保存预测字段为 state.json
+- 阶段 2/3/4 的 prompt 中会自动注入 BM25 检索的历史经验（bull/bear/judge/trader 四角色分别注入对应记忆）
+
+## 自进化闭环
+
+每日 Pipeline 执行后，通过复盘形成完整的学习闭环：
+
+```
+决策日 (D)                          复盘日 (D+1)
+┌──────────────────────────┐        ┌──────────────────────────┐
+│  Pipeline 正常运行         │        │  bin/run-reflect.sh       │
+│  ↓ 阶段 2/3/4 注入记忆     │        │  ① calc-signals.py 计算   │
+│  ↓ 阶段 5 保存 state.json │──────→│     Signal A/B/C 准确率   │
+└──────────────────────────┘        │  ② Reflector Agent 反思   │
+          ↑                         │  ③ memory.py 写入记忆     │
+          └────────────────────────-┘                           │
+                  历史经验注入                                    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### 记忆角色映射
+
+| 角色 | 记忆库 | 注入时机 |
+|------|--------|---------|
+| 看多辩手 | data/memory/bull.jsonl | 阶段 2/3 bull prompt |
+| 看空辩手 | data/memory/bear.jsonl | 阶段 2/3 bear prompt |
+| 市场/题材裁判 | data/memory/judge.jsonl | 阶段 2/3 judge prompt |
+| 投资经理 | data/memory/trader.jsonl | 阶段 4 final prompt |
+
+### 复盘信号类型
+
+- **Signal A** — 推荐个股次日涨跌 vs 交易信号（买入/观望/回避）的一致性
+- **Signal B** — 推荐题材次日情绪得分变化 vs 裁判态度的一致性
+- **Signal C** — 预测情绪周期阶段 vs 次日实际量化指标推断阶段的一致性
 
 ## 常用命令
 
@@ -146,6 +224,18 @@ curl -s http://127.0.0.1:8000/market-emotion/daily/2026-03-21 | jq .
 
 # 单独运行某个 Agent（调试用）
 pi --print --agent agents/analysts/emotion-analyst.md "2026-03-21"
+
+# 复盘（对比决策日预测与次日实际结果，生成反思并写入记忆）
+bin/run-reflect.sh 2026-03-20
+
+# 复盘 verbose 模式（查看 Reflector Agent 实时输出）
+bin/run-reflect.sh -v 2026-03-20
+
+# 查询角色历史记忆（BM25 语义检索）
+.venv/bin/python3 bin/memory.py query --role bull --n 3 --situation "冰点期 涨停下降"
+
+# 手动生成 state.json（pipeline 阶段 5 会自动执行）
+.venv/bin/python3 bin/save-state.py data/reports/2026-03-20 2026-03-20 > data/reports/2026-03-20/state.json
 ```
 
 ## 关键设计文档

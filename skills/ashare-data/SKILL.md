@@ -1,91 +1,104 @@
 ---
 name: ashare-data
-description: A股市场数据采集 Skill，封装 ashare-platform API 调用
+description: "A-share market data skill wrapping the ashare-platform API. Use when: (1) fetching daily market emotion indicators, (2) retrieving theme pool or theme emotion rankings, (3) querying trend pool or individual stock trend history, (4) getting market review data."
 tools: bash
 ---
 
 # ashare-data Skill
 
-本 Skill 提供 A 股市场数据的统一采集接口，封装对 ashare-platform API 的调用。
+Provides unified A-share market data access via the `pi-trader data` CLI.
 
-## 环境变量
+## Prerequisite Check
 
-| 变量名 | 默认值 | 说明 |
-|--------|--------|------|
-| `ASHARE_API_URL` | `http://127.0.0.1:8000` | ashare-platform API 地址 |
-
-## 可用脚本
-
-### 市场情绪数据
-
-| 脚本 | 功能 | 用法 |
-|------|------|------|
-| `fetch-market-emotion.sh` | 获取单日市场情绪数据 | `./fetch-market-emotion.sh <trade_date>` |
-| `fetch-market-emotion-history.sh` | 获取市场情绪历史数据 | `./fetch-market-emotion-history.sh [days] [end_date]` |
-
-### 题材情绪数据
-
-| 脚本 | 功能 | 用法 |
-|------|------|------|
-| `fetch-theme-emotion.sh` | 获取单日题材情绪排行 | `./fetch-theme-emotion.sh <trade_date> [limit] [sort]` |
-| `fetch-theme-emotion-history.sh` | 获取单个题材情绪历史 | `./fetch-theme-emotion-history.sh <theme_name> [days]` |
-
-### 题材池数据
-
-| 脚本 | 功能 | 用法 |
-|------|------|------|
-| `fetch-theme-pool.sh` | 获取单日题材池排行 | `./fetch-theme-pool.sh <trade_date> [limit] [sort]` |
-| `fetch-theme-stocks.sh` | 获取题材成分股列表 | `./fetch-theme-stocks.sh <theme_name> <trade_date>` |
-
-### 趋势池数据
-
-| 脚本 | 功能 | 用法 |
-|------|------|------|
-| `fetch-trend-pool.sh` | 获取单日趋势池排行 | `./fetch-trend-pool.sh <trade_date> [limit] [sort]` |
-| `fetch-trend-stock-history.sh` | 获取个股趋势历史 | `./fetch-trend-stock-history.sh <code> [days]` |
-
-### 市场复盘数据
-
-| 脚本 | 功能 | 用法 |
-|------|------|------|
-| `fetch-market-review.sh` | 获取市场复盘数据 | `./fetch-market-review.sh <trade_date>` |
-
-## 参数说明
-
-- `trade_date`: 交易日期，格式 `YYYY-MM-DD`
-- `theme_name`: 题材名称，如 "机器人"
-- `code`: 股票代码，如 "002123"
-- `days`: 历史天数，默认 20
-- `end_date`: 结束日期，格式 `YYYY-MM-DD`
-- `limit`: 返回条数限制
-- `sort`: 排序字段
-
-## 错误处理
-
-所有脚本：
-- 使用 `curl -sf` 调用 API（`-s` 静默模式，`-f` HTTP 错误时返回非零）
-- 输出通过 `jq .` 格式化
-- 出错时写入 stderr 并以非零退出码退出
-
-## 参考文档
-
-- `references/emotion-cycle-theory.md` — 情绪周期六阶段理论
-- `references/emotion-cycle-indicators.md` — 情绪周期量化指标
-- `references/api-guide.md` — API 接口速查手册
-
-## 示例
+Before fetching any data, verify the API is reachable:
 
 ```bash
-# 获取某日市场情绪
-cd skills/ashare-data/scripts
-./fetch-market-emotion.sh 2026-03-21
-
-# 获取最近20天市场情绪历史
-./fetch-market-emotion-history.sh 20 2026-03-21
-
-# 获取某日题材排行（前20）
-./fetch-theme-emotion.sh 2026-03-21 20
-
-# 获取"机器人"题材历史情绪
-./fetch-theme-emotion-history.sh "机器人" 30
+curl -sf --connect-timeout 3 http://127.0.0.1:8000/health > /dev/null
 ```
+
+If this fails, stop immediately and report: "ashare-platform API unreachable at http://127.0.0.1:8000". Do not proceed.
+
+## Calling Convention
+
+All data is fetched via the `pi-trader data` CLI command:
+
+```bash
+pi-trader data emotion 2026-03-21
+```
+
+## Available Commands
+
+### Market Emotion
+
+| Command | Function | Usage |
+|---------|----------|-------|
+| `emotion` | Single-day market emotion | `pi-trader data emotion <trade_date>` |
+| `emotion-history` | Market emotion history | `pi-trader data emotion-history [days] [end_date]` |
+
+### Theme Emotion
+
+| Command | Function | Usage |
+|---------|----------|-------|
+| `theme-emotion` | Daily theme emotion ranking | `pi-trader data theme-emotion <trade_date> [limit] [sort]` |
+| `theme-emotion-history` | Single theme emotion history | `pi-trader data theme-emotion-history <theme_name> [days]` |
+
+### Theme Pool
+
+| Command | Function | Usage |
+|---------|----------|-------|
+| `theme-pool` | Daily theme pool ranking | `pi-trader data theme-pool <trade_date> [limit] [sort]` |
+| `theme-stocks` | Theme constituent stocks | `pi-trader data theme-stocks <theme_name> <trade_date>` |
+
+### Trend Pool
+
+| Command | Function | Usage |
+|---------|----------|-------|
+| `trend-pool` | Daily trend pool ranking | `pi-trader data trend-pool <trade_date> [limit] [sort]` |
+| `trend-history` | Individual stock trend history | `pi-trader data trend-history <code> [days]` |
+
+### Market Review
+
+| Command | Function | Usage |
+|---------|----------|-------|
+| `review` | Market review data | `pi-trader data review <trade_date>` |
+
+## Parameters
+
+- `trade_date`: trading date in `YYYY-MM-DD` format
+- `theme_name`: theme name, e.g. `"机器人"` — always quote strings containing Chinese characters
+- `code`: stock code, e.g. `"002123"`
+- `days`: number of historical days, default 20
+- `end_date`: end date in `YYYY-MM-DD` format
+- `limit`: maximum number of results to return
+- `sort`: sort field
+
+## Return Format
+
+- All list endpoints return a **JSON array** `[...]` directly — not a `{"data": [...]}` wrapper object.
+- Access elements with `.[0]`, `.[]` etc. Never use `.data`.
+- The `theme_stage` field uses English codes. Translate to Chinese when writing reports:
+
+| API value | Chinese stage |
+|-----------|--------------|
+| `early`     | 启动 |
+| `ferment`   | 发酵 |
+| `main_rise` | 主升 |
+| `climax`    | 高潮 |
+| `middle`    | 分歧 |
+| `late`      | 退潮 |
+
+## Failure Handling
+
+If a command fails: record "数据获取失败: `<command>`" in the report and continue. Do not retry. Do not call curl directly.
+
+## Guardrails
+
+NO extra jq filters appended to command output. No exceptions.
+Output already includes `jq .`; adding a second filter silently returns null or corrupts output.
+
+NO direct curl calls to the API. No exceptions.
+NEVER reconstruct the API call manually.
+
+NO `.data` key when accessing output. No exceptions.
+All list endpoints return a bare JSON array `[...]`.
+

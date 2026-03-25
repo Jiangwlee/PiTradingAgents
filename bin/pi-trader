@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""
+PiTrader CLI — A 股投资分析平台命令行工具
+
+部署入口脚本，职责：
+1. 从环境变量获取标准路径（由 install.sh 设置的包装脚本传入）
+2. 初始化 Python 路径
+3. 导入并运行 Typer 应用
+
+环境变量（必须）：
+  PITA_HOME          应用根目录 (~/.PiTradingAgents/)
+  PITA_APP_DIR       应用根目录（PITA_HOME 的别名）
+  PITA_DATA_DIR      数据目录 (~/.local/share/PiTradingAgents/)
+  PITA_CONFIG_DIR    配置目录 (~/.config/PiTradingAgents/)
+  ASHARE_API_URL     行情 API 地址
+"""
+
+import os
+import sys
+from pathlib import Path
+
+
+def get_required_env(var: str) -> str:
+    """获取必需的环境变量，如果不存在则报错"""
+    value = os.environ.get(var)
+    if not value:
+        print(f"[错误] 环境变量 {var} 未设置", file=sys.stderr)
+        print("[错误] 请通过 install.sh 安装，或手动设置环境变量", file=sys.stderr)
+        sys.exit(1)
+    return value
+
+
+def setup_environment():
+    """设置运行环境"""
+    # 必需的环境变量（由包装脚本设置）
+    pita_home = get_required_env("PITA_HOME")
+    
+    # 设置 Python 路径，使 cli 包可被导入
+    if pita_home not in sys.path:
+        sys.path.insert(0, pita_home)
+    
+    # 验证目录存在
+    required_dirs = [
+        ("PITA_HOME", pita_home),
+        ("cli 目录", os.path.join(pita_home, "cli")),
+        ("scripts 目录", os.path.join(pita_home, "scripts")),
+    ]
+    
+    for name, path in required_dirs:
+        if not os.path.exists(path):
+            print(f"[错误] {name} 不存在: {path}", file=sys.stderr)
+            print("[错误] 安装可能不完整，请重新运行 install.sh", file=sys.stderr)
+            sys.exit(1)
+
+
+def main():
+    """主入口"""
+    setup_environment()
+    
+    try:
+        from cli.app import main as cli_main
+        cli_main()
+    except ImportError as e:
+        print(f"[错误] 无法导入 CLI 模块: {e}", file=sys.stderr)
+        print(f"[错误] Python 路径: {sys.path}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

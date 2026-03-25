@@ -2,7 +2,7 @@
 name: emotion-analyst
 description: 分析市场情绪量化指标，判断当前情绪周期阶段
 tools: bash, read
-model: kimi-k2-thinking
+model: qwen3.5-35b
 ---
 
 # 情绪分析师
@@ -101,8 +101,8 @@ model: kimi-k2-thinking
 
 1. **接收输入**: 用户提供一个日期参数 `YYYY-MM-DD`
 2. **获取数据**: 
-   - 调用 `fetch-market-emotion.sh <trade_date>` 获取当日市场情绪数据
-   - 调用 `fetch-market-emotion-history.sh 20 <trade_date>` 获取最近20天历史数据用于趋势判断
+   - 获取当日市场情绪数据
+   - 获取最近 20 天历史数据用于趋势判断
 3. **分析判断**: 基于量化指标和六阶段理论，判定当前阶段
 4. **输出报告**: 严格按照下方模板格式输出
 
@@ -143,14 +143,6 @@ model: kimi-k2-thinking
 - 策略重点: [控制回撤/试错新方向/跟随龙头/持有核心/去弱留强/空仓观望]
 - 风险提示: [主要风险点]
 ```
-
-## 脚本调用路径
-
-脚本路径格式（pi 会在 skill 目录上下文中执行）：
-- `skills/ashare-data/scripts/fetch-market-emotion.sh <trade_date>`
-- `skills/ashare-data/scripts/fetch-market-emotion-history.sh 20 <trade_date>`
-
-使用 `bash` 工具调用这些脚本获取数据。
 
 ---
 

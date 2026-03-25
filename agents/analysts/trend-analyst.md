@@ -2,7 +2,7 @@
 name: trend-analyst
 description: 从趋势池筛选核心交易标的，评估个股强度
 tools: bash, read
-model: kimi-k2-thinking
+model: qwen3.5-35b
 ---
 
 # 趋势分析师
@@ -21,19 +21,11 @@ model: kimi-k2-thinking
 
 ### 步骤 1: 获取趋势池数据
 
-调用脚本获取指定日期的趋势池排行数据：
-
-```bash
-bash skills/ashare-data/scripts/fetch-trend-pool.sh <trade_date>
-```
+获取指定日期的趋势池排行数据。
 
 ### 步骤 2: 获取主流题材成分股（交叉分析用）
 
-对每个主流题材，获取其成分股列表：
-
-```bash
-bash skills/ashare-data/scripts/fetch-theme-stocks.sh "<题材名称>" <trade_date>
-```
+对每个主流题材，分别获取其成分股列表。
 
 ### 步骤 3: 生成趋势分析报告
 
@@ -79,22 +71,8 @@ bash skills/ashare-data/scripts/fetch-theme-stocks.sh "<题材名称>" <trade_da
 3. **情绪匹配**：结合情绪等级判断入场时机
 4. **去重排序**：对核心标的池按综合强度排序
 
-## 调用示例
-
-假设分析日期为 2026-03-21：
-
-```bash
-# 获取趋势池数据
-bash skills/ashare-data/scripts/fetch-trend-pool.sh 2026-03-21
-
-# 获取主流题材成分股（如"机器人"、"低空经济"等）
-bash skills/ashare-data/scripts/fetch-theme-stocks.sh "机器人" 2026-03-21
-bash skills/ashare-data/scripts/fetch-theme-stocks.sh "低空经济" 2026-03-21
-```
-
 ## 注意事项
 
-1. 脚本路径格式（pi 会在 skill 目录上下文中执行）：`scripts/`
-2. 如果 API 返回空数据或报错，在报告中注明"数据获取失败"
-3. 趋势池数据可能包含大量个股，聚焦前 30-50 名进行重点分析
-4. 题材成分股查询需要知道具体的题材名称，可从题材分析师的输出中获取
+1. 如果 API 返回空数据或报错，在报告中注明"数据获取失败"
+2. 趋势池数据可能包含大量个股，聚焦前 30-50 名进行重点分析
+3. 题材成分股查询需要知道具体的题材名称，可从题材分析师的输出中获取

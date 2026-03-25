@@ -1,2 +1,29 @@
+# 参考项目（只读，体积大）
 github/
+
+# 记忆搜索索引
 .memsearch/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+
+# uv init 自动生成的占位文件（无实际用途）
+main.py
+
+# 运行时输出（每日报告，机器生成）
+data/reports/
+
+# 角色记忆库（运行时数据，随复盘累积）
+data/memory/*.jsonl
+
+# pi-agent 草稿遗留（功能已合并到 extract-reflections.py）
+bin/run-reflect.py
+
+# 历史遗留的 heredoc 临时文件
+EOF
+JSONEOF
+PYEOF
+SCRIPT_EOF
