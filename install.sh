@@ -1,423 +1,257 @@
-#!/usr/bin/env bash
-# PiTradingAgents 标准安装脚本
-# 遵循 Linux 最佳实践：代码部署到 ~/.PiTradingAgents/，数据分离到 XDG 目录
+#!/bin/bash
+# PiTradingAgents 一键安装脚本
+# 使用方式: curl -fsSL https://raw.githubusercontent.com/Jiangwlee/PiTradingAgents/main/install.sh | bash
+#
+# 功能:
+# - 从 GitHub 克隆/更新代码
+# - 创建 Python 虚拟环境
+# - 安装依赖
+# - 注册 pi-trader 命令
+# - 初始化数据目录
 
 set -euo pipefail
 
-# 版本
-VERSION="1.1.0"
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
 
-# 标准路径（遵循 XDG Base Directory Specification）
-PITA_HOME="${PITA_HOME:-$HOME/.PiTradingAgents}"           # 应用根目录
-PITA_DATA_DIR="${PITA_DATA_DIR:-$HOME/.local/share/PiTradingAgents}"  # 运行时数据
-PITA_CONFIG_DIR="${PITA_CONFIG_DIR:-$HOME/.config/PiTradingAgents}"   # 配置文件
-PITA_BIN_DIR="${PITA_BIN_DIR:-$HOME/.local/bin}"          # 用户命令目录
+# 配置
+GITHUB_REPO="Jiangwlee/PiTradingAgents"
+INSTALL_DIR="${HOME}/.PiTradingAgents"
+BIN_DIR="${HOME}/.local/bin"
+DATA_DIR="${HOME}/.local/share/PiTradingAgents"
+CONFIG_DIR="${HOME}/.config/PiTradingAgents"
 
-# 源代码位置（当前执行 install.sh 的目录）
-SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-usage() {
-    cat <<EOF
-PiTradingAgents Installer v${VERSION}
-
-Usage: ./install.sh [OPTIONS]
-
-Install PiTradingAgents to standard locations:
-  - Code:    ~/.PiTradingAgents/
-  - Data:    ~/.local/share/PiTradingAgents/
-  - Config:  ~/.config/PiTradingAgents/
-  - Command: ~/.local/bin/pi-trader
-
-Options:
-  --upgrade          Upgrade existing installation
-  --uninstall        Remove PiTradingAgents completely
-  --help, -h         Show this help message
-
-Environment variables:
-  PITA_HOME          Override application directory (default: ~/.PiTradingAgents)
-  PITA_DATA_DIR      Override data directory (default: ~/.local/share/PiTradingAgents)
-  PITA_CONFIG_DIR    Override config directory (default: ~/.config/PiTradingAgents)
-  PITA_BIN_DIR       Override binary directory (default: ~/.local/bin)
-
-Examples:
-  ./install.sh                    # Fresh install
-  ./install.sh --upgrade          # Upgrade existing installation
-  ./install.sh --uninstall        # Complete removal
-EOF
+# 打印信息
+info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
 }
 
-log_info() {
-    echo "[INFO] $1"
+success() {
+    echo -e "${GREEN}[OK]${NC} $1"
 }
 
-log_error() {
-    echo "[ERROR] $1" >&2
+warn() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
 }
 
-log_success() {
-    echo "[OK] $1"
-}
-
-log_warn() {
-    echo "[WARN] $1"
+error() {
+    echo -e "${RED}[ERROR]${NC} $1"
 }
 
 # 检查依赖
 check_dependencies() {
-    log_info "Checking dependencies..."
+    info "检查依赖..."
     
     local missing=()
-    
-    if ! command -v python3 &> /dev/null; then
-        missing+=("python3")
-    fi
     
     if ! command -v git &> /dev/null; then
         missing+=("git")
     fi
     
+    if ! command -v uv &> /dev/null; then
+        missing+=("uv")
+    fi
+    
+    if ! command -v python3 &> /dev/null; then
+        missing+=("python3")
+    fi
+    
+    if ! command -v curl &> /dev/null; then
+        missing+=("curl")
+    fi
+    
     if [[ ${#missing[@]} -gt 0 ]]; then
-        log_error "Missing required dependencies: ${missing[*]}"
-        log_error "Please install them and retry."
+        error "缺少必要依赖: ${missing[*]}"
+        echo ""
+        echo "请安装以下工具:"
+        echo "  - git:    sudo apt install git"
+        echo "  - uv:     curl -LsSf https://astral.sh/uv/install.sh | sh"
+        echo "  - python3: sudo apt install python3 python3-venv"
+        echo "  - curl:   sudo apt install curl"
+        echo ""
         exit 1
     fi
     
-    log_success "All dependencies satisfied"
+    success "所有依赖已满足"
 }
 
-# 检查 ashare-data 服务
-check_ashare_data() {
-    log_info "Checking ashare-data service..."
+# 克隆或更新代码
+clone_or_update() {
+    info "准备代码..."
     
-    local ashare_url="${ASHARE_API_URL:-http://127.0.0.1:8000}"
-    
-    if curl -sf --connect-timeout 3 "$ashare_url/health" &> /dev/null; then
-        log_success "ashare-data is running at $ashare_url"
-        return 0
+    if [[ -d "$INSTALL_DIR/.git" ]]; then
+        # 已存在，执行更新
+        info "检测到现有安装，执行更新..."
+        cd "$INSTALL_DIR"
+        git pull origin main
+        success "代码已更新"
     else
-        echo ""
-        log_error "ashare-data is NOT running!"
-        echo ""
-        echo "PiTradingAgents requires ashare-data to function."
-        echo ""
-        echo "Please install and start ashare-data first:"
-        echo ""
-        echo "  1. Clone the repository:"
-        echo "     git clone git@github.com:Jiangwlee/ashare-data.git"
-        echo "     cd ashare-data"
-        echo ""
-        echo "  2. Start the service (usually with Docker):"
-        echo "     docker-compose up -d"
-        echo ""
-        echo "  3. Verify it's running:"
-        echo "     curl http://localhost:8000/health"
-        echo ""
-        echo "For more information, visit:"
-        echo "  https://github.com/Jiangwlee/ashare-data"
-        echo ""
-        
-        read -p "Continue installation anyway? [y/N] " -n 1 -r
-        echo ""
-        
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            log_info "Installation aborted. Please start ashare-data and retry."
-            exit 1
-        fi
-        
-        log_warn "Continuing without ashare-data. PiTrader commands will fail until it's started."
+        # 全新安装
+        info "从 GitHub 克隆代码..."
+        rm -rf "$INSTALL_DIR"  # 清理可能存在的旧目录
+        git clone "https://github.com/$GITHUB_REPO.git" "$INSTALL_DIR"
+        success "代码已克隆到 $INSTALL_DIR"
     fi
-}
-
-# 创建目录结构
-create_directories() {
-    log_info "Creating directory structure..."
-    
-    # 应用目录
-    mkdir -p "$PITA_HOME"/{bin,cli,scripts,agents,skills}
-    mkdir -p "$PITA_HOME/agents"/{analysts,debaters,judges,reflection,decision}
-    
-    # 数据目录
-    mkdir -p "$PITA_DATA_DIR"/{data/reports,data/memory}
-    
-    # 配置目录
-    mkdir -p "$PITA_CONFIG_DIR"
-    
-    # 初始化记忆文件
-    touch "$PITA_DATA_DIR/data/memory"/{bull,bear,judge,trader}.jsonl
-    
-    log_success "Directories created"
-}
-
-# 复制代码
-copy_code() {
-    log_info "Installing code to $PITA_HOME..."
-    
-    # 检查源目录
-    if [[ ! -d "$SOURCE_DIR/cli" ]] || [[ ! -d "$SOURCE_DIR/scripts" ]]; then
-        log_error "Source directory missing required subdirectories (cli/, scripts/)"
-        log_error "Please run install.sh from the project root directory."
-        exit 1
-    fi
-    
-    # 复制 Python CLI
-    cp -r "$SOURCE_DIR/cli" "$PITA_HOME/"
-    
-    # 复制 Bash 脚本
-    cp -r "$SOURCE_DIR/scripts" "$PITA_HOME/"
-    
-    # 复制 Agents
-    cp -r "$SOURCE_DIR/agents" "$PITA_HOME/"
-    
-    # 复制入口脚本
-    cp "$SOURCE_DIR/bin/pi-trader" "$PITA_HOME/bin/"
-    cp "$SOURCE_DIR/bin/run-analysis.sh" "$PITA_HOME/bin/"
-    cp "$SOURCE_DIR/bin/run-reflect.sh" "$PITA_HOME/bin/"
-    
-    # 使脚本可执行
-    chmod +x "$PITA_HOME/bin/"*
-    chmod +x "$PITA_HOME/scripts/"*.sh
-    
-    log_success "Code installed"
 }
 
 # 创建虚拟环境
 setup_venv() {
-    log_info "Setting up Python virtual environment..."
+    info "创建 Python 虚拟环境..."
     
-    local venv_path="$PITA_HOME/.venv"
+    cd "$INSTALL_DIR"
     
-    if [[ -d "$venv_path" ]]; then
-        log_info "Virtual environment already exists, skipping creation"
+    if [[ -d ".venv" ]]; then
+        info "虚拟环境已存在，跳过创建"
     else
-        python3 -m venv "$venv_path"
-        log_success "Virtual environment created"
+        uv venv .venv
+        success "虚拟环境已创建"
     fi
+}
+
+# 安装依赖
+install_dependencies() {
+    info "安装 Python 依赖..."
     
-    # 安装依赖
-    log_info "Installing Python dependencies..."
-    "$venv_path/bin/pip" install --upgrade pip -q
-    "$venv_path/bin/pip" install -q typer rich requests
+    cd "$INSTALL_DIR"
     
-    log_success "Dependencies installed"
+    # 使用系统 uv 安装依赖到虚拟环境
+    uv pip install typer rich requests -q --python .venv/bin/python3
+    
+    success "依赖已安装"
 }
 
 # 创建命令入口
 create_command() {
-    log_info "Creating command entry point..."
+    info "创建命令入口..."
     
-    local target="$PITA_BIN_DIR/pi-trader"
+    mkdir -p "$BIN_DIR"
     
-    # 创建包装脚本
-    cat > "$target" <<EOF
-#!/usr/bin/env bash
-# PiTradingAgents CLI wrapper
-# Auto-generated by install.sh
+    # 创建 Bash 包装器脚本
+    cat > "$BIN_DIR/pi-trader" << 'EOF'
+#!/bin/bash
+# PiTrader CLI 包装器脚本
+# 自动设置环境变量并调用 Python CLI
 
-export PITA_HOME="$PITA_HOME"
-export PITA_DATA_DIR="$PITA_DATA_DIR"
-export PITA_CONFIG_DIR="$PITA_CONFIG_DIR"
-export PITA_APP_DIR="$PITA_HOME"
-export ASHARE_API_URL="\${ASHARE_API_URL:-http://127.0.0.1:8000}"
+# 设置环境变量
+export PITA_HOME="${HOME}/.PiTradingAgents"
+export PITA_APP_DIR="${HOME}/.PiTradingAgents"
+export PITA_DATA_DIR="${PITA_DATA_DIR:-$HOME/.local/share/PiTradingAgents}"
+export PITA_CONFIG_DIR="${PITA_CONFIG_DIR:-$HOME/.config/PiTradingAgents}"
+export ASHARE_API_URL="${ASHARE_API_URL:-http://127.0.0.1:8000}"
 
-exec "$PITA_HOME/.venv/bin/python3" "$PITA_HOME/bin/pi-trader" "\$@"
+# 执行 Python CLI
+exec "$PITA_HOME/.venv/bin/python3" "$PITA_HOME/cli/app.py" "$@"
 EOF
     
-    chmod +x "$target"
-    log_success "Command created: $target"
+    chmod +x "$BIN_DIR/pi-trader"
+    success "命令已注册: $BIN_DIR/pi-trader"
 }
 
-# 生成配置文件
-generate_config() {
-    log_info "Generating configuration..."
+# 初始化数据目录
+init_directories() {
+    info "初始化数据目录..."
     
-    cat > "$PITA_CONFIG_DIR/config.env" <<EOF
-# PiTradingAgents Configuration
-# Generated by install.sh v${VERSION}
-
-PITA_HOME="$PITA_HOME"
-PITA_DATA_DIR="$PITA_DATA_DIR"
-PITA_CONFIG_DIR="$PITA_CONFIG_DIR"
-PITA_APP_DIR="$PITA_HOME"
+    # 创建数据目录
+    mkdir -p "$DATA_DIR/data/reports"
+    mkdir -p "$DATA_DIR/data/memory"
+    
+    # 创建记忆文件
+    touch "$DATA_DIR/data/memory/bull.jsonl"
+    touch "$DATA_DIR/data/memory/bear.jsonl"
+    touch "$DATA_DIR/data/memory/judge.jsonl"
+    touch "$DATA_DIR/data/memory/trader.jsonl"
+    
+    # 创建配置目录
+    mkdir -p "$CONFIG_DIR"
+    
+    # 生成配置文件
+    cat > "$CONFIG_DIR/config.env" << EOF
+PITA_HOME="$INSTALL_DIR"
+PITA_APP_DIR="$INSTALL_DIR"
+PITA_DATA_DIR="$DATA_DIR"
+PITA_CONFIG_DIR="$CONFIG_DIR"
 ASHARE_API_URL="http://127.0.0.1:8000"
-
-# Python Environment
-PYTHON_BIN="$PITA_HOME/.venv/bin/python3"
 EOF
     
-    log_success "Configuration saved to $PITA_CONFIG_DIR/config.env"
+    success "数据目录已初始化"
 }
 
-# 验证安装
-verify_installation() {
-    log_info "Verifying installation..."
+# 检查 ashare-data
+check_ashare_data() {
+    info "检查 ashare-data 服务..."
     
-    local errors=0
-    
-    # 检查目录
-    [[ -d "$PITA_HOME/cli" ]] || { log_error "Missing: $PITA_HOME/cli"; errors=$((errors+1)); }
-    [[ -d "$PITA_HOME/scripts" ]] || { log_error "Missing: $PITA_HOME/scripts"; errors=$((errors+1)); }
-    [[ -f "$PITA_HOME/bin/pi-trader" ]] || { log_error "Missing: $PITA_HOME/bin/pi-trader"; errors=$((errors+1)); }
-    
-    # 检查命令
-    [[ -x "$PITA_BIN_DIR/pi-trader" ]] || { log_error "Missing: $PITA_BIN_DIR/pi-trader"; errors=$((errors+1)); }
-    
-    # 检查 Python 环境
-    [[ -f "$PITA_HOME/.venv/bin/python3" ]] || { log_error "Missing: Python venv"; errors=$((errors+1)); }
-    
-    if [[ $errors -eq 0 ]]; then
-        log_success "Installation verified"
-        return 0
+    if curl -sf --connect-timeout 3 "http://127.0.0.1:8000/health" &> /dev/null; then
+        success "ashare-data 服务运行正常"
     else
-        log_error "Installation verification failed with $errors errors"
-        return 1
+        warn "ashare-data 未运行"
+        echo ""
+        echo "PiTradingAgents 需要 ashare-data 提供行情数据。"
+        echo "请先安装并启动 ashare-data:"
+        echo ""
+        echo "  git clone git@github.com:Jiangwlee/ashare-data.git"
+        echo "  cd ashare-data"
+        echo "  docker-compose up -d"
+        echo ""
     fi
 }
 
-# 卸载
-uninstall() {
-    log_info "Uninstalling PiTradingAgents..."
-    
-    # 移除命令
-    if [[ -f "$PITA_BIN_DIR/pi-trader" ]]; then
-        rm -f "$PITA_BIN_DIR/pi-trader"
-        log_success "Removed: $PITA_BIN_DIR/pi-trader"
-    fi
-    
-    # 询问是否删除数据和配置
+# 打印完成信息
+print_completion() {
     echo ""
-    read -p "Remove all data and configuration? [y/N] " -n 1 -r
+    echo "=============================================="
+    echo -e "${GREEN}✅ PiTradingAgents 安装成功!${NC}"
+    echo "=============================================="
+    echo ""
+    echo "📁 安装路径:"
+    echo "   代码:   $INSTALL_DIR"
+    echo "   数据:   $DATA_DIR"
+    echo "   配置:   $CONFIG_DIR"
+    echo "   命令:   $BIN_DIR/pi-trader"
     echo ""
     
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        rm -rf "$PITA_HOME"
-        rm -rf "$PITA_DATA_DIR"
-        rm -rf "$PITA_CONFIG_DIR"
-        log_success "Removed all application files"
-    else
-        log_info "Keeping data in $PITA_DATA_DIR and config in $PITA_CONFIG_DIR"
-        rm -rf "$PITA_HOME"
-        log_success "Removed application code only"
+    # 检查 PATH
+    if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
+        echo -e "${YELLOW}⚠️  请添加以下命令到你的 shell 配置文件:${NC}"
+        echo ""
+        echo "   echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ~/.bashrc"
+        echo "   source ~/.bashrc"
+        echo ""
     fi
     
+    echo "🚀 快速开始:"
+    echo "   pi-trader --help           # 查看帮助"
+    echo "   pi-trader doctor           # 系统诊断"
+    echo "   pi-trader run 2026-03-24   # 运行分析"
     echo ""
-    log_success "PiTradingAgents has been uninstalled"
-}
-
-# 升级
-upgrade() {
-    log_info "Upgrading PiTradingAgents..."
-    
-    if [[ ! -d "$PITA_HOME" ]]; then
-        log_error "No existing installation found at $PITA_HOME"
-        log_error "Use: ./install.sh (without --upgrade) for fresh install"
-        exit 1
-    fi
-    
-    log_info "Backing up configuration..."
-    if [[ -f "$PITA_CONFIG_DIR/config.env" ]]; then
-        cp "$PITA_CONFIG_DIR/config.env" "$PITA_CONFIG_DIR/config.env.backup.$(date +%Y%m%d)"
-    fi
-    
-    log_info "Removing old code..."
-    rm -rf "$PITA_HOME/cli"
-    rm -rf "$PITA_HOME/scripts"
-    rm -rf "$PITA_HOME/agents"
-    rm -rf "$PITA_HOME/bin"
-    
-    # 重新创建目录结构
-    mkdir -p "$PITA_HOME"/{bin,cli,scripts,agents,skills}
-    
-    log_info "Installing new version..."
-    copy_code
-    setup_venv
-    create_command
-    generate_config
-    
-    log_success "Upgrade completed"
+    echo "📖 文档:"
+    echo "   cat $INSTALL_DIR/README.md"
+    echo "   cat $INSTALL_DIR/docs/cli-guide.md"
+    echo ""
+    echo "🔄 升级:"
+    echo "   重新运行安装命令即可自动更新"
+    echo ""
 }
 
 # 主流程
 main() {
-    # 解析参数
-    case "${1:-}" in
-        --help|-h)
-            usage
-            exit 0
-            ;;
-        --uninstall)
-            uninstall
-            exit 0
-            ;;
-        --upgrade)
-            upgrade
-            verify_installation
-            print_summary
-            exit 0
-            ;;
-        "")
-            # Fresh install
-            ;;
-        *)
-            log_error "Unknown option: $1"
-            usage
-            exit 1
-            ;;
-    esac
-    
-    # 检查是否已安装
-    if [[ -d "$PITA_HOME" ]] && [[ "${1:-}" != "--upgrade" ]]; then
-        log_error "PiTradingAgents is already installed at $PITA_HOME"
-        log_error "Use --upgrade to upgrade, or --uninstall to remove"
-        exit 1
-    fi
-    
-    # 执行安装
+    echo ""
     echo "=============================================="
-    echo "PiTradingAgents Installer v${VERSION}"
+    echo "PiTradingAgents 一键安装"
     echo "=============================================="
     echo ""
     
     check_dependencies
-    check_ashare_data
-    create_directories
-    copy_code
+    clone_or_update
     setup_venv
+    install_dependencies
     create_command
-    generate_config
-    verify_installation
-    
-    print_summary
-}
-
-print_summary() {
-    echo ""
-    echo "=============================================="
-    echo "✅ Installation Complete!"
-    echo "=============================================="
-    echo ""
-    echo "📁 Installation Paths:"
-    echo "   Application:  $PITA_HOME"
-    echo "   Data:         $PITA_DATA_DIR"
-    echo "   Config:       $PITA_CONFIG_DIR"
-    echo "   Command:      $PITA_BIN_DIR/pi-trader"
-    echo ""
-    echo "🚀 Quick Start:"
-    echo "   pi-trader --help           # Show all commands"
-    echo "   pi-trader doctor           # Check system status"
-    echo "   pi-trader run 2026-03-24   # Run analysis"
-    echo ""
-    echo "📖 Documentation:"
-    echo "   docs/cli-guide.md          # Complete usage guide"
-    echo "   docs/CHANGELOG.md          # Version history"
-    echo ""
-    
-    # 检查 PATH
-    if [[ ":$PATH:" != *":$PITA_BIN_DIR:"* ]]; then
-        echo "⚠️  Warning: $PITA_BIN_DIR is not in your PATH"
-        echo "   Add this to your ~/.bashrc or ~/.zshrc:"
-        echo "   export PATH=\"\$PATH:$PITA_BIN_DIR\""
-        echo ""
-    fi
+    init_directories
+    check_ashare_data
+    print_completion
 }
 
 # 执行
