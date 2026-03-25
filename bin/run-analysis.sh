@@ -632,8 +632,8 @@ run_agent "投资经理" "$REPORT_DIR/07-final-report.md" "$PROJECT_ROOT/agents/
 if [[ -f "$REPORT_DIR/07-final-report.md" ]]; then
     TIMESTAMP=$(date +%H%M%S)
     FINAL_NAME="A股题材交易决策-${TRADE_DATE}-${TIMESTAMP}"
-    mv "$REPORT_DIR/07-final-report.md" "$REPORT_DIR/${FINAL_NAME}.md"
-    echo "最终报告已重命名: ${FINAL_NAME}.md"
+    cp "$REPORT_DIR/07-final-report.md" "$REPORT_DIR/${FINAL_NAME}.md"
+    echo "最终报告已复制: ${FINAL_NAME}.md"
 
     if [[ -f "$CONVERT_PY" ]]; then
         echo "正在生成 PDF（桌面版）..."

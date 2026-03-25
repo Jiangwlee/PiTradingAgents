@@ -288,6 +288,20 @@ def extract_key_points(content, point_type='bull'):
     return points
 
 
+def find_final_report(report_path):
+    """查找最终报告文件（支持重命名后的文件）"""
+    # 优先查找重命名后的文件
+    renamed_files = list(report_path.glob('A股题材交易决策-*.md'))
+    if renamed_files:
+        # 返回最新的文件
+        return max(renamed_files, key=lambda p: p.stat().st_mtime)
+    # 回退到旧文件名
+    old_file = report_path / '07-final-report.md'
+    if old_file.exists():
+        return old_file
+    return None
+
+
 def collect_reports(report_dir):
     """收集所有报告文件的完整内容"""
     reports = {}
@@ -298,7 +312,6 @@ def collect_reports(report_dir):
         '05a-bull-argument.md',
         '05b-bear-argument.md',
         '05-market-debate.md',
-        '07-final-report.md',
     ]
     
     for pattern in ['06a-bull-*.md', '06b-bear-*.md', '06-theme-debate.md']:
@@ -312,6 +325,13 @@ def collect_reports(report_dir):
             content = read_file(filepath)
             if content:
                 reports[filename] = content
+    
+    # 单独处理最终报告（支持重命名）
+    final_report_file = find_final_report(report_path)
+    if final_report_file:
+        content = read_file(final_report_file)
+        if content:
+            reports['07-final-report.md'] = content
     
     return reports
 
@@ -334,7 +354,8 @@ def main():
     
     report_path = Path(report_dir)
     
-    final_report = read_file(report_path / '07-final-report.md')
+    final_report_file = find_final_report(report_path)
+    final_report = read_file(final_report_file) if final_report_file else ""
     market_debate = read_file(report_path / '05-market-debate.md')
     
     state = {

@@ -117,12 +117,14 @@ run_reflector() {
 parse_reflection_json() {
     local input_file="$1"
     local output_file="$2"
-    "$PYTHON" - <<PY > "$output_file"
+    "$PYTHON" - "$input_file" <<'PY' > "$output_file"
 import json
 import re
+import sys
 from pathlib import Path
 
-content = Path("$input_file").read_text(encoding='utf-8')
+input_file = sys.argv[1]
+content = Path(input_file).read_text(encoding='utf-8')
 data = None
 
 match = re.search(r'```json\s*(.*?)\s*```', content, re.DOTALL)
@@ -141,9 +143,12 @@ if data is None:
 if data is None:
     match = re.search(r'\{.*\}', content, re.DOTALL)
     if match:
-        data = json.loads(match.group(0))
+        try:
+            data = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            data = None
 
-print(json.dumps(data, ensure_ascii=False, indent=2))
+print(json.dumps(data, ensure_ascii=False, indent=2) if data else "null")
 PY
 }
 
@@ -225,7 +230,14 @@ build_role_input() {
             cp "$REPORT_DIR/05-market-debate.md" "$output_file"
             ;;
         trader)
-            cp "$REPORT_DIR/07-final-report.md" "$output_file"
+            # 优先查找重命名后的最终报告，回退到旧文件名
+            local final_report
+            final_report=$(ls -t "$REPORT_DIR"/A股题材交易决策-*.md 2>/dev/null | head -1)
+            if [[ -n "$final_report" ]]; then
+                cp "$final_report" "$output_file"
+            else
+                cp "$REPORT_DIR/07-final-report.md" "$output_file"
+            fi
             ;;
     esac
 }
