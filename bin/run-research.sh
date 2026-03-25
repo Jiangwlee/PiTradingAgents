@@ -208,13 +208,21 @@ echo "=============================================="
 echo "研究完成 ✓"
 echo "Markdown: $OUTPUT_FILE"
 
-# 生成 PDF
+# 生成 PDF（桌面版 + 手机版）
 if [[ -f "$OUTPUT_FILE" && -f "$CONVERT_PY" ]]; then
-    echo "正在生成 PDF..."
+    echo "正在生成 PDF（桌面版）..."
     python3 "$CONVERT_PY" "$OUTPUT_FILE" \
         --mode report --format pdf --same-dir --stdout-manifest 2>/dev/null \
-        | python3 -c "import json,sys; m=json.load(sys.stdin); print('PDF:     ', m['files'][0] if m.get('ok') and m.get('files') else '生成失败')" \
-        || echo "[警告] PDF 生成失败，仅保留 Markdown"
+        | python3 -c "import json,sys; m=json.load(sys.stdin); print('桌面版 PDF:', m['files'][0] if m.get('ok') and m.get('files') else '生成失败')" \
+        || echo "[警告] 桌面版 PDF 生成失败"
+
+    echo "正在生成 PDF（手机版）..."
+    OUTPUT_BASE="${OUTPUT_FILE%.md}"
+    python3 "$CONVERT_PY" "$OUTPUT_FILE" \
+        --mode report --format pdf --layout mobile \
+        --output "${OUTPUT_BASE}_mobile" --stdout-manifest 2>/dev/null \
+        | python3 -c "import json,sys; m=json.load(sys.stdin); print('手机版 PDF:', m['files'][0] if m.get('ok') and m.get('files') else '生成失败')" \
+        || echo "[警告] 手机版 PDF 生成失败"
 elif [[ ! -f "$CONVERT_PY" ]]; then
     echo "[警告] markdown-to-anything 不可用，跳过 PDF 生成"
 fi

@@ -636,11 +636,18 @@ if [[ -f "$REPORT_DIR/07-final-report.md" ]]; then
     echo "最终报告已重命名: ${FINAL_NAME}.md"
 
     if [[ -f "$CONVERT_PY" ]]; then
-        echo "正在生成 PDF..."
+        echo "正在生成 PDF（桌面版）..."
         python3 "$CONVERT_PY" "$REPORT_DIR/${FINAL_NAME}.md" \
             --mode report --format pdf --same-dir --stdout-manifest 2>/dev/null \
-            | python3 -c "import json,sys; m=json.load(sys.stdin); print('PDF 已生成:', m['files'][0] if m.get('ok') and m.get('files') else '失败')" \
-            || echo "[警告] PDF 生成失败，仅保留 Markdown"
+            | python3 -c "import json,sys; m=json.load(sys.stdin); print('桌面版 PDF:', m['files'][0] if m.get('ok') and m.get('files') else '失败')" \
+            || echo "[警告] 桌面版 PDF 生成失败"
+
+        echo "正在生成 PDF（手机版）..."
+        python3 "$CONVERT_PY" "$REPORT_DIR/${FINAL_NAME}.md" \
+            --mode report --format pdf --layout mobile \
+            --output "$REPORT_DIR/${FINAL_NAME}_mobile" --stdout-manifest 2>/dev/null \
+            | python3 -c "import json,sys; m=json.load(sys.stdin); print('手机版 PDF:', m['files'][0] if m.get('ok') and m.get('files') else '失败')" \
+            || echo "[警告] 手机版 PDF 生成失败"
     else
         echo "[警告] markdown-to-anything 不可用，跳过 PDF 生成"
     fi
