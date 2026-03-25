@@ -62,6 +62,13 @@ pi-trader data emotion 2026-03-21
 |---------|----------|-------|
 | `review` | Market review data | `pi-trader data review <trade_date>` |
 
+### Screening
+
+| Command | Function | Usage |
+|---------|----------|-------|
+| `consecutive-red` | Consecutive up stocks | `pi-trader data consecutive-red <trade_date> [min_days]` |
+| `new-high` | Historical new high stocks | `pi-trader data new-high <trade_date>` |
+
 ## Parameters
 
 - `trade_date`: trading date in `YYYY-MM-DD` format
@@ -86,6 +93,23 @@ pi-trader data emotion 2026-03-21
 | `climax`    | 高潮 |
 | `middle`    | 分歧 |
 | `late`      | 退潮 |
+
+### consecutive-red fields
+- `code`: stock code
+- `name`: stock name
+- `sc`: full code with exchange prefix (e.g. `SH600396`)
+- `consecutive_days`: number of consecutive up days
+- `gain_pct`: total gain percentage over the consecutive period
+- `bars`: daily bar array, each with `date` and `change_pct`
+
+### new-high fields
+- `code`: stock code
+- `name`: stock name
+- `price`: current price
+- `change_pct`: change percentage on this day
+- `turnover_rate`: turnover rate
+- `prev_high`: previous historical high price
+- `prev_high_date`: date of previous historical high
 
 ## Failure Handling
 

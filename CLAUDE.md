@@ -13,6 +13,8 @@ PiTradingAgents/
 │   │   ├── theme-analyst.md            # 题材分析师 — 识别主流题材和阶段
 │   │   ├── trend-analyst.md            # 趋势分析师 — 筛选核心交易标的
 │   │   └── catalyst-analyst.md         # 催化剂分析师 — 深度研究题材驱动力
+│   ├── researchers/
+│   │   └── stock-researcher.md         # 个股研究员 — 5轮分层淘汰深度研究走强个股
 │   ├── debaters/
 │   │   ├── bull-debater.md             # 看多辩手
 │   │   └── bear-debater.md             # 看空辩手
@@ -230,6 +232,15 @@ bin/run-reflect.sh 2026-03-20
 
 # 复盘 verbose 模式（查看 Reflector Agent 实时输出）
 bin/run-reflect.sh -v 2026-03-20
+
+# 运行个股深度研究（自动获取7连阳+历史新高，5轮分层淘汰）
+pi-trader research
+
+# 个股深度研究 verbose 模式
+pi-trader research -v
+
+# 指定股票研究（跳过前3轮筛选，直接深度研究）
+pi-trader research --stocks 600396,603929
 
 # 查询角色历史记忆（BM25 语义检索）
 .venv/bin/python3 bin/memory.py query --role bull --n 3 --situation "冰点期 涨停下降"

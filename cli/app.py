@@ -158,6 +158,63 @@ def run_analysis(
     _run_script("run-analysis.sh", args, "分析流程")
 
 
+# ========== 命令：research ==========
+
+@app.command("research")
+def run_research(
+    stocks: Annotated[
+        Optional[str],
+        typer.Option("--stocks", help="逗号分隔的股票代码或名称，如 '600396,603929'；不传则自动获取7连阳+历史新高")
+    ] = None,
+    model: Annotated[
+        Optional[str],
+        typer.Option("--model", "-m", help="指定 LLM 模型名称\n支持：qwen3.5-35b, qwen3.5-27b, kimi-k2p5, kimi-k2-thinking")
+    ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="详细输出模式，实时显示 Agent 推理过程")
+    ] = False,
+):
+    """
+    运行个股深度研究
+
+    对走强股票进行多轮迭代研究，挖掘深层上涨驱动力：
+
+    • 默认模式：自动获取7连阳+历史新高股票作为研究候选池
+    • 指定模式：对指定股票直接进行深度研究（跳过筛选轮次）
+
+    研究流程（默认模式）：
+      • Round 1: 基本面排雷（排除ST/壳股/重大利空）
+      • Round 2: 催化剂验证（验证走强驱动力真实性）
+      • Round 3: 赛道位置（确认题材内竞争地位）
+      • Round 4-5: AI自主深度研究（Top 3）
+
+    支持的模型：
+      • qwen3.5-35b, qwen3.5-27b → litellm-local/qwen3.5-*
+      • kimi-k2p5, kimi-k2-thinking → kimi-coding/k*
+
+    示例：
+      pi-trader research
+      pi-trader research --stocks 600396,603929
+      pi-trader research -v --model kimi-k2p5
+    """
+    console.print(Panel.fit(
+        "PiTrader — 个股深度研究",
+        subtitle="默认模式：7连阳+历史新高" if not stocks else f"指定股票：{stocks}",
+        border_style="cyan"
+    ))
+
+    args = []
+    if verbose:
+        args.append("-v")
+    if model:
+        args.extend(["-m", model])
+    if stocks:
+        args.extend(["--stocks", stocks])
+
+    _run_script("run-research.sh", args, "深度研究")
+
+
 # ========== 命令：insight ==========
 
 @app.command("insight")
@@ -216,6 +273,69 @@ def run_insight(
     _run_script("run-reflect.sh", args, "复盘流程")
 
 
+# ========== 命令：research ==========
+
+@app.command("research")
+def run_research(
+    stocks: Annotated[
+        Optional[str],
+        typer.Option("--stocks", help="逗号分隔的股票代码或名称，如 600396,603929；不传则自动获取7连阳+历史新高")
+    ] = None,
+    model: Annotated[
+        Optional[str],
+        typer.Option("--model", "-m", help="指定 LLM 模型名称\n支持：qwen3.5-35b, qwen3.5-27b, kimi-k2p5, kimi-k2-thinking")
+    ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="详细输出模式，实时显示研究过程")
+    ] = False,
+):
+    """
+    运行个股深度研究
+
+    对走强股票进行多轮迭代研究，挖掘深层上涨驱动力：
+
+    \b
+    • 默认模式：自动获取7连阳+历史新高股票作为研究候选池
+    • 指定模式：对指定股票直接进行深度研究（跳过筛选轮次）
+
+    研究流程（默认模式）：
+    \b
+      • Round 1: 基本面排雷（排除ST/壳股/重大利空）
+      • Round 2: 催化剂验证（验证走强驱动力真实性）
+      • Round 3: 赛道位置（确认题材内竞争地位）
+      • Round 4-5: AI自主深度研究（Top 3）
+
+    支持的模型：
+    \b
+      • qwen3.5-35b, qwen3.5-27b → litellm-local/qwen3.5-*
+      • kimi-k2p5, kimi-k2-thinking → kimi-coding/k*
+
+    示例：
+    \b
+      pi-trader research
+      pi-trader research --stocks 600396,603929
+      pi-trader research -v --model kimi-k2p5
+    """
+    console.print(Panel.fit(
+        "PiTrader — 个股深度研究",
+        subtitle=f"研究标的：{stocks or '自动获取7连阳+历史新高'}",
+        border_style="cyan"
+    ))
+
+    # 构建参数列表
+    args = []
+    if verbose:
+        args.append("-v")
+    if model:
+        args.extend(["-m", model])
+    if stocks:
+        args.extend(["--stocks", stocks])
+
+    # 执行研究脚本
+    _run_script("run-research.sh", args, "深度研究")
+
+
 # ========== 命令：data ==========
 
 @app.command("data")
@@ -244,6 +364,8 @@ def query_data(
       trend-pool           趋势池排名
       trend-history        个股趋势历史
       review               市场回顾数据
+      consecutive-red      连阳股票（默认≥7日）
+      new-high             历史新高股票
     
     示例：
       pi-trader data emotion 2026-03-21
@@ -272,6 +394,8 @@ def query_data(
         "trend-pool": "fetch-trend-pool.sh",
         "trend-history": "fetch-trend-stock-history.sh",
         "review": "fetch-market-review.sh",
+        "consecutive-red": "fetch-consecutive-red.sh",
+        "new-high": "fetch-new-high.sh",
     }
     
     script_name = subcommand_map.get(subcommand)
@@ -386,6 +510,8 @@ def show_help(
             console.print("[dim]运行分析流程的详细帮助将在执行时显示（使用 --help）[/dim]")
         elif command == "insight":
             console.print("[dim]运行复盘反思的详细帮助将在执行时显示（使用 --help）[/dim]")
+        elif command == "research":
+            console.print("[dim]运行个股深度研究的详细帮助将在执行时显示（使用 --help）[/dim]")
         elif command == "data":
             console.print("[dim]数据查询的详细帮助将在执行时显示（使用 pi-trader data --help）[/dim]")
         else:
