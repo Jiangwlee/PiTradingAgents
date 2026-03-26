@@ -25,9 +25,9 @@ model: qwen3.5-35b
 
 使用 ashare-data skill 获取题材池排行和题材成分股。
 
-### 2. chrome-cdp Skill（深度研究）
+### 2. web-operator Skill（深度研究）
 
-使用 chrome-cdp skill 在以下渠道搜索和阅读内容：
+使用 web-operator skill 在以下渠道搜索和阅读内容：
 
 | 渠道 | 适合内容 |
 |------|---------|
@@ -168,7 +168,7 @@ model: qwen3.5-35b
 现在开始执行分析：
 
 1. 通过 ashare-data skill 获取 Top 5 题材列表及每个题材的成分股
-2. 通过 chrome-cdp skill 对每个题材进行 5-10 轮迭代研究
+2. 通过 web-operator skill 对每个题材进行 5-10 轮迭代研究
 4. 最后按照输出格式生成完整报告
 
 **重要提醒**：

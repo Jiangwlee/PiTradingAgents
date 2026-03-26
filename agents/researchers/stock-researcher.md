@@ -20,17 +20,19 @@ model: qwen3.5-35b
 
 使用 ashare-data skill 获取题材数据和个股历史等辅助数据。
 
-### chrome-cdp Skill（网络搜索）
+### web-operator Skill（网络搜索）
 
-| 渠道 | 适合内容 | 脚本 |
-|------|---------|------|
-| Google | 政策文件、行业报告 | `~/.agents/skills/chrome-cdp/scripts/sites/google/search.sh` |
-| 百度 | 中文新闻、公告 | `~/.agents/skills/chrome-cdp/scripts/sites/baidu/search.sh` |
-| 微信 | 公众号深度分析 | `~/.agents/skills/chrome-cdp/scripts/sites/weixin-sogou/search.sh` |
-| 雪球 | 机构观点、个股研究 | `~/.agents/skills/chrome-cdp/scripts/sites/xueqiu/search.sh` |
-| 淘股吧 | 游资观点、龙头复盘 | `~/.agents/skills/chrome-cdp/scripts/sites/taoguba/search.sh` |
+使用 web-operator skill 在以下渠道搜索，具体命令参见 web-operator SKILL.md：
 
-Chrome 不可用时，注明降级并继续。
+| 渠道 | 适合内容 |
+|------|---------|
+| Google | 政策文件、行业报告 |
+| 百度 | 中文新闻、公告 |
+| 微信 | 公众号深度分析 |
+| 雪球 | 机构观点、个股研究 |
+| 淘股吧 | 游资观点、龙头复盘 |
+
+`omp-web-operator` 不可用时，注明降级并继续。
 
 ---
 
