@@ -194,9 +194,15 @@ PI_ARGS=(
 )
 
 if $VERBOSE; then
-    pi "${PI_ARGS[@]}" 2>/dev/null | tee "$OUTPUT_FILE"
+    pi "${PI_ARGS[@]}" 2>&1 | tee "$OUTPUT_FILE"
 else
-    pi "${PI_ARGS[@]}" > "$OUTPUT_FILE" 2>/dev/null
+    pi "${PI_ARGS[@]}" > "$OUTPUT_FILE" 2>"$TMP_DIR/pi-stderr.log"
+fi
+
+# 如果 pi 无输出，显示 stderr 帮助诊断
+if [[ ! -s "$OUTPUT_FILE" && -s "$TMP_DIR/pi-stderr.log" ]]; then
+    echo "[错误] pi 执行失败，stderr:" >&2
+    cat "$TMP_DIR/pi-stderr.log" >&2
 fi
 
 if [[ ! -s "$OUTPUT_FILE" ]]; then
