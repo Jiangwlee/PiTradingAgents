@@ -26,6 +26,12 @@ def ansi(text: str, code: str) -> str:
     return f"\033[{code}m{text}\033[0m"
 
 
+def label_ansi(label: str) -> str:
+    palette = ["1;34", "1;36", "1;32", "1;33", "1;35", "1;31"]
+    index = sum(ord(ch) for ch in label) % len(palette)
+    return ansi(f"[{label}]", palette[index])
+
+
 def write_stdout(text: str) -> None:
     sys.stdout.write(text)
     sys.stdout.flush()
@@ -197,7 +203,7 @@ def render_single(args: argparse.Namespace) -> int:
             if evt_type == "text_delta":
                 flush_trailing_newlines(compact=not assistant_stream_open)
                 if not in_text_stream:
-                    prefix = f"{ansi(f'[{args.label}]', '1;34')} "
+                    prefix = f"{label_ansi(args.label)} "
                     write_stdout(prefix)
                     in_text_stream = True
                     line_open = True
@@ -287,7 +293,7 @@ def render_parallel_follow(args: argparse.Namespace) -> int:
             status_display = "✓" if not event.get("isError", False) else "✗"
             status_color = "32" if not event.get("isError", False) else "31"
             line = (
-                f"[{args.label}] "
+                f"{label_ansi(args.label)} "
                 f"{ansi(status_display, status_color)} "
                 f"{ansi(tool_name, '37')}  "
                 f"{ansi(args_summary, '90')}"
@@ -311,7 +317,7 @@ def render_parallel_follow(args: argparse.Namespace) -> int:
         text = extract_message_text(message).strip()
         if not text:
             return
-        write_stdout(f"[{args.label}]\n{text}\n\n")
+        write_stdout(f"{label_ansi(args.label)}\n{text}\n\n")
 
     def drain_once() -> None:
         nonlocal offset
