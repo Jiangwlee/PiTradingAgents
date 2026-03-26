@@ -9,6 +9,7 @@
 #   run       [DATE]                   运行分析流程
 #   research  [--stocks CODE,CODE]     个股深度研究
 #   reflect   DATE                     复盘反思（自进化）
+#   inject    EXPERIENCE               注入交易经验
 #   data      SUBCOMMAND [ARGS...]     市场数据查询
 #   doctor                             系统诊断
 
@@ -203,6 +204,52 @@ def reflect(
     args.append(date)
 
     _run_script(APP_ROOT / "bin/run-reflect.sh", args, "复盘流程")
+
+
+# ── 命令：inject ────────────────────────────────────────────────────────────
+
+
+@app.command()
+def inject(
+    experience: Annotated[
+        str,
+        typer.Argument(help="交易经验文本", metavar="EXPERIENCE"),
+    ],
+    role: Annotated[
+        Optional[str],
+        typer.Option("--role", "-r", help="目标角色 (bull/bear/judge/trader)，不指定则 AI 自动判定"),
+    ] = None,
+    model: Annotated[
+        Optional[str],
+        typer.Option("--model", "-m", help="LLM 模型名称"),
+    ] = None,
+    mode: Annotated[
+        Literal["stream", "text", "json"],
+        typer.Option(
+            "--mode",
+            help="运行模式：stream（默认实时展示研究过程）/ text（仅结论）/ json（原始事件流）",
+            case_sensitive=False,
+        ),
+    ] = "stream",
+) -> None:
+    """注入交易经验（AI 深度研究验证后写入记忆库）"""
+    console.print(
+        Panel.fit(
+            "PiTrader — 经验注入",
+            subtitle=f"目标角色：{role or 'AI 自动判定'}",
+            border_style="cyan",
+        )
+    )
+
+    args: list[str] = []
+    args.extend(["--mode", mode])
+    if role:
+        args.extend(["--role", role])
+    if model:
+        args.extend(["-m", model])
+    args.append(experience)
+
+    _run_script(APP_ROOT / "bin/run-inject.sh", args, "经验注入")
 
 
 # ── 命令：data ───────────────────────────────────────────────────────────────

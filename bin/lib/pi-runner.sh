@@ -87,6 +87,11 @@ run_agent_node() {
         --system-prompt "$system_prompt"
         --skill "$PI_TRADER_ROOT/skills/ashare-data"
     )
+    if [[ -n "${EXTRA_SKILLS:-}" ]]; then
+        for skill_path in $EXTRA_SKILLS; do
+            pi_args+=(--skill "$skill_path")
+        done
+    fi
     if [[ -n "$append_system_prompt" ]]; then
         pi_args+=(--append-system-prompt "$append_system_prompt")
     fi

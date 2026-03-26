@@ -22,7 +22,8 @@ PiTradingAgents/
 │   │   ├── market-judge.md             # 市场环境裁判
 │   │   └── theme-judge.md              # 题材机会裁判
 │   ├── reflection/
-│   │   └── reflector.md                # Reflector Agent — 4步反思框架
+│   │   ├── reflector.md                # Reflector Agent — 4步反思框架
+│   │   └── experience-injector.md      # 经验注入研究员 — 研究验证用户经验
 │   └── decision/
 │       └── investment-manager.md       # 投资经理 — 生成最终报告
 │
@@ -37,6 +38,7 @@ PiTradingAgents/
 │   ├── run-analysis.sh                 # Pipeline Conductor 编排脚本
 │   ├── run-research.sh                 # 个股深度研究编排脚本
 │   ├── run-reflect.sh                  # 复盘编排脚本（信号计算→反思→记忆写入）
+│   ├── run-inject.sh                   # 经验注入编排脚本（研究验证→记忆写入）
 │   ├── memory.py                       # BM25+jieba 记忆存储/检索 CLI
 │   ├── save-state.py                   # Pipeline 状态保存（提取预测字段为 state.json）
 │   ├── calc-signals.py                 # 结果信号计算（比较预测 vs 实际涨跌）
@@ -225,6 +227,12 @@ pi-trader run -v -s 3 --model qwen3.5-35b 2026-03-21
 
 # 复盘（对比决策日预测与次日实际结果，生成反思并写入记忆）
 pi-trader reflect 2026-03-20
+
+# 经验注入（AI 研究验证后写入记忆库）
+pi-trader inject "冰点期不要抄底，等跌停家数连续两天缩减再入场"
+
+# 指定角色注入
+pi-trader inject --role trader "连板股第三天放量要警惕，大概率是出货"
 
 # 个股深度研究（自动获取7连阳+历史新高，5轮分层淘汰）
 pi-trader research
