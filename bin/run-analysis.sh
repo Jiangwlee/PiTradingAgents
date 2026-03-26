@@ -10,8 +10,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# 使用项目 venv 的 Python（确保 jieba/rank-bm25 可用）
-PYTHON="$PROJECT_ROOT/.venv/bin/python3"
+# Python 脚本使用 uv run --script（shebang 驱动，无需 venv）
 
 # markdown-to-anything 转换脚本
 CONVERT_PY="$HOME/Projects/oh-my-superpowers/skills/markdown-to-anything/scripts/convert.py"
@@ -111,7 +110,7 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 # 从 pi JSON 事件流中提取最终一轮 LLM 文本
 # 多轮 agent 对话中取最后一条 message 的完整文本
 extract_final_text() {
-    $PYTHON -c "
+    python3 -c "
 import json, sys
 text = ''
 for line in open(sys.argv[1]):
@@ -343,7 +342,7 @@ done
 SITUATION_SUMMARY=""
 if [[ -f "$REPORT_DIR/01-emotion-report.md" ]]; then
     # 提取情绪阶段、涨停/跌停数等关键指标作为检索 query
-    SITUATION_SUMMARY=$($PYTHON -c "
+    SITUATION_SUMMARY=$(python3 -c "
 import sys, re
 text = open(sys.argv[1], encoding='utf-8').read()
 # 提取关键行（含数字指标的行）
@@ -365,7 +364,7 @@ echo "=== 阶段 2: 市场环境辩论（顺序执行） ==="
 
 # 1. 看多辩手（P0-1 修复：使用临时 prompt 文件）
 echo "[辩论] 看多辩手构建论据..."
-BULL_MEMORY=$($PYTHON bin/memory.py --data-dir "$MEMORY_DIR" query --role bull --n 3 \
+BULL_MEMORY=$(bin/memory.py --data-dir "$MEMORY_DIR" query --role bull --n 3 \
     --situation "$SITUATION_SUMMARY" 2>/dev/null || echo "")
 
 BULL_PROMPT="$TMP_DIR/bull-prompt.txt"
@@ -386,7 +385,7 @@ run_agent "看多辩手" "$REPORT_DIR/05a-bull-argument.md" "$PROJECT_ROOT/agent
 
 # 2. 看空辩手（P0-1 修复：使用临时 prompt 文件）
 echo "[辩论] 看空辩手构建论据..."
-BEAR_MEMORY=$($PYTHON bin/memory.py --data-dir "$MEMORY_DIR" query --role bear --n 3 \
+BEAR_MEMORY=$(bin/memory.py --data-dir "$MEMORY_DIR" query --role bear --n 3 \
     --situation "$SITUATION_SUMMARY" 2>/dev/null || echo "")
 
 BEAR_PROMPT="$TMP_DIR/bear-prompt.txt"
@@ -410,7 +409,7 @@ run_agent "看空辩手" "$REPORT_DIR/05b-bear-argument.md" "$PROJECT_ROOT/agent
 
 # 3. 市场裁判（P0-1 修复：使用临时 prompt 文件）
 echo "[裁判] 市场环境裁判综合判定..."
-JUDGE_MEMORY=$($PYTHON bin/memory.py --data-dir "$MEMORY_DIR" query --role judge --n 3 \
+JUDGE_MEMORY=$(bin/memory.py --data-dir "$MEMORY_DIR" query --role judge --n 3 \
     --situation "$SITUATION_SUMMARY" 2>/dev/null || echo "")
 
 JUDGE_PROMPT="$TMP_DIR/judge-prompt.txt"
@@ -601,7 +600,7 @@ for report in "$REPORT_DIR"/*.md; do
 done
 
 # 读取历史记忆（使用 memory.py 语义检索）
-TRADER_MEMORY=$($PYTHON bin/memory.py --data-dir "$MEMORY_DIR" query --role trader --n 5 \
+TRADER_MEMORY=$(bin/memory.py --data-dir "$MEMORY_DIR" query --role trader --n 5 \
     --situation "$SITUATION_SUMMARY" 2>/dev/null || echo "")
 
 LESSONS_FILE="$TMP_DIR/lessons.md"
@@ -660,7 +659,7 @@ fi  # end should_run_stage 4
 # ======== 阶段 5: 状态保存（用于次日复盘） ========
 echo ""
 echo "=== 阶段 5: 保存 Pipeline 状态 ==="
-if $PYTHON bin/save-state.py "$REPORT_DIR" "$TRADE_DATE" > "$REPORT_DIR/state.json" 2>/dev/null; then
+if bin/save-state.py "$REPORT_DIR" "$TRADE_DATE" > "$REPORT_DIR/state.json" 2>/dev/null; then
     echo "状态已保存: $REPORT_DIR/state.json"
 else
     echo "[警告] 状态保存失败，复盘功能将不可用"

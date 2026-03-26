@@ -1,10 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# dependencies = []
+# ///
 """
 Pipeline 信号计算脚本
 比较决策日 (D日) 的预测与实际结果 (D+1日)，计算准确率信号
 
 用法:
-    python3 bin/calc-signals.py --state data/reports/2026-03-20/state.json --eval-date 2026-03-21
+    calc-signals.py --state data/reports/2026-03-20/state.json --eval-date 2026-03-21
 """
 
 import argparse

@@ -1,4 +1,7 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# dependencies = ["jieba", "rank-bm25"]
+# ///
 """Memory storage/retrieval CLI tool with BM25 and jieba tokenization.
 
 基于参考实现 FinancialSituationMemory，增加 JSONL 持久化和中文分词。

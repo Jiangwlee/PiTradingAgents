@@ -33,12 +33,14 @@ PiTradingAgents/
 │       └── references/                 # 情绪周期理论、API 文档
 │
 ├── bin/
+│   ├── pi-trader                       # CLI 入口（uv run --script + Typer）
 │   ├── run-analysis.sh                 # Pipeline Conductor 编排脚本
+│   ├── run-research.sh                 # 个股深度研究编排脚本
+│   ├── run-reflect.sh                  # 复盘编排脚本（信号计算→反思→记忆写入）
 │   ├── memory.py                       # BM25+jieba 记忆存储/检索 CLI
 │   ├── save-state.py                   # Pipeline 状态保存（提取预测字段为 state.json）
 │   ├── calc-signals.py                 # 结果信号计算（比较预测 vs 实际涨跌）
-│   ├── extract-reflections.py          # 从 Reflector 输出提取 JSON 反思结果
-│   └── run-reflect.sh                  # 复盘编排脚本（信号计算→反思→记忆写入）
+│   └── extract-reflections.py          # 从 Reflector 输出提取 JSON 反思结果
 │
 ├── data/
 │   ├── reports/{YYYY-MM-DD}/           # 每日分析报告输出
@@ -71,7 +73,7 @@ PiTradingAgents/
 | 编排 | Shell 脚本 | bin/run-analysis.sh 按 Pipeline 模式调度各 Agent |
 | 语言 | Shell (脚本) | Skills 层为 bash curl wrapper |
 | 记忆检索 | BM25 + jieba | bin/memory.py，中文分词语义匹配历史教训 |
-| Python 包管理 | uv (.venv/) | rank-bm25, jieba；所有 Python 脚本使用 .venv/bin/python3 |
+| Python 包管理 | uv (inline script) | 每个 .py 脚本通过 `uv run --script` + inline deps 自管理依赖 |
 
 ## 核心依赖
 
@@ -83,7 +85,7 @@ PiTradingAgents/
 - **chrome-cdp Skill** — 安装在 `~/.agents/skills/chrome-cdp/`
 - **jq** — JSON 处理
 - **curl** — API 调用
-- **Python venv (.venv/)** — 记忆系统依赖 rank-bm25 和 jieba，通过 `uv` 管理，使用 `.venv/bin/python3` 调用
+- **uv** — Python 脚本通过 `uv run --script` 运行，自动管理依赖（无需手动 venv）
 
 ### 外部服务
 
@@ -212,41 +214,42 @@ bash skills/ashare-data/scripts/fetch-market-emotion.sh 2026-03-21
 ## 常用命令
 
 ```bash
-# 运行完整分析 Pipeline（静默模式，只输出阶段提示）
-bin/run-analysis.sh 2026-03-21
+# 运行完整分析 Pipeline
+pi-trader run 2026-03-21
 
-# Verbose 模式（实时查看每个 Agent 的推理输出，带 [Agent名] 前缀）
-bin/run-analysis.sh -v 2026-03-21
+# Verbose 模式（实时查看每个 Agent 的推理输出）
+pi-trader run -v 2026-03-21
 
-# 测试 ashare-platform API 连通性
-curl -s http://127.0.0.1:8000/health
-
-# 查看某日市场情绪
-curl -s http://127.0.0.1:8000/market-emotion/daily/2026-03-21 | jq .
-
-# 单独运行某个 Agent（调试用）
-pi --print --agent agents/analysts/emotion-analyst.md "2026-03-21"
+# 指定阶段和模型
+pi-trader run -v -s 3 --model qwen3.5-35b 2026-03-21
 
 # 复盘（对比决策日预测与次日实际结果，生成反思并写入记忆）
-bin/run-reflect.sh 2026-03-20
+pi-trader reflect 2026-03-20
 
-# 复盘 verbose 模式（查看 Reflector Agent 实时输出）
-bin/run-reflect.sh -v 2026-03-20
-
-# 运行个股深度研究（自动获取7连阳+历史新高，5轮分层淘汰）
+# 个股深度研究（自动获取7连阳+历史新高，5轮分层淘汰）
 pi-trader research
-
-# 个股深度研究 verbose 模式
-pi-trader research -v
 
 # 指定股票研究（跳过前3轮筛选，直接深度研究）
 pi-trader research --stocks 600396,603929
 
+# 市场数据查询
+pi-trader data emotion 2026-03-21
+pi-trader data theme-pool 2026-03-21 50 theme_rank
+
+# 系统诊断
+pi-trader doctor
+
 # 查询角色历史记忆（BM25 语义检索）
-.venv/bin/python3 bin/memory.py query --role bull --n 3 --situation "冰点期 涨停下降"
+bin/memory.py query --role bull --n 3 --situation "冰点期 涨停下降"
 
 # 手动生成 state.json（pipeline 阶段 5 会自动执行）
-.venv/bin/python3 bin/save-state.py data/reports/2026-03-20 2026-03-20 > data/reports/2026-03-20/state.json
+bin/save-state.py data/reports/2026-03-20 2026-03-20 > data/reports/2026-03-20/state.json
+
+# 单独运行某个 Agent（调试用）
+pi --print --agent agents/analysts/emotion-analyst.md "2026-03-21"
+
+# 测试 ashare-platform API 连通性
+curl -s http://127.0.0.1:8000/health
 ```
 
 ## 关键设计文档

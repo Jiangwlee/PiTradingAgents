@@ -6,7 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-PYTHON="$PROJECT_ROOT/.venv/bin/python3"
+# Python 脚本使用 uv run --script（shebang 驱动，无需 venv）
 API_URL="${ASHARE_API_URL:-http://127.0.0.1:8000}"
 PITA_HOME="${PITA_HOME:-$HOME/.local/share/PiTradingAgents}"
 PITA_DATA_DIR="${PITA_DATA_DIR:-$PITA_HOME/data}"
@@ -66,7 +66,7 @@ echo "=============================================="
 extract_text_from_pi_jsonl() {
     local jsonl_file="$1"
     local output_file="$2"
-    "$PYTHON" - <<PY > "$output_file"
+    python3 - <<PY > "$output_file"
 import json
 text = ''
 for line in open("$jsonl_file", encoding='utf-8'):
@@ -117,7 +117,7 @@ run_reflector() {
 parse_reflection_json() {
     local input_file="$1"
     local output_file="$2"
-    "$PYTHON" - "$input_file" <<'PY' > "$output_file"
+    python3 - "$input_file" <<'PY' > "$output_file"
 import json
 import re
 import sys
@@ -153,7 +153,7 @@ PY
 }
 
 build_market_situation() {
-    "$PYTHON" - <<PY
+    python3 - <<PY
 import json
 import re
 from pathlib import Path
@@ -194,7 +194,7 @@ PY
 
 build_role_context() {
     local role="$1"
-    "$PYTHON" - <<PY
+    python3 - <<PY
 import json
 from pathlib import Path
 
@@ -245,7 +245,7 @@ build_role_input() {
 build_validation_input() {
     local role="$1"
     local output_file="$2"
-    "$PYTHON" - <<PY > "$output_file"
+    python3 - <<PY > "$output_file"
 import json
 from pathlib import Path
 
@@ -288,7 +288,7 @@ echo "=== 步骤 1: 验证前置条件 ==="
 
 if [[ ! -f "$STATE_FILE" ]]; then
     echo "  state.json 不存在，尝试自动生成..."
-    if $PYTHON "$PROJECT_ROOT/bin/save-state.py" "$REPORT_DIR" "$DECISION_DATE" > "$STATE_FILE" 2>/dev/null; then
+    if "$PROJECT_ROOT/bin/save-state.py" "$REPORT_DIR" "$DECISION_DATE" > "$STATE_FILE" 2>/dev/null; then
         echo "  ✓ 已自动生成 state.json"
     else
         echo "  ✗ 无法生成 state.json，请确保 pipeline 已完整运行" >&2
@@ -308,7 +308,7 @@ fi
 echo ""
 echo "=== 步骤 2: 计算评估日期 ==="
 
-EVAL_DATE=$($PYTHON - <<PY
+EVAL_DATE=$(python3 - <<PY
 from datetime import datetime, timedelta
 decision_date = datetime.strptime("$DECISION_DATE", "%Y-%m-%d")
 next_date = decision_date + timedelta(days=1)
@@ -325,7 +325,7 @@ echo ""
 echo "=== 步骤 3: 计算结果信号 ==="
 
 SIGNALS_FILE="$REPORT_DIR/signals.json"
-if $PYTHON "$PROJECT_ROOT/bin/calc-signals.py" --state "$STATE_FILE" --eval-date "$EVAL_DATE" > "$SIGNALS_FILE" 2>/dev/null; then
+if "$PROJECT_ROOT/bin/calc-signals.py" --state "$STATE_FILE" --eval-date "$EVAL_DATE" > "$SIGNALS_FILE" 2>/dev/null; then
     echo "  ✓ 信号计算完成: $SIGNALS_FILE"
 else
     echo "  ✗ 信号计算失败" >&2
@@ -336,7 +336,7 @@ echo ""
 echo "=== 步骤 4: 获取次日实际市场数据 ==="
 
 ACTUAL_DATA_FILE="$REPORT_DIR/actual-data.json"
-$PYTHON - <<PY > "$ACTUAL_DATA_FILE" 2>/dev/null || echo "{}" > "$ACTUAL_DATA_FILE"
+python3 - <<PY > "$ACTUAL_DATA_FILE" 2>/dev/null || echo "{}" > "$ACTUAL_DATA_FILE"
 import urllib.request
 import json
 import sys
@@ -475,8 +475,8 @@ for item in "${ROLE_OUTPUTS[@]}"; do
     role="${item%%:*}"
     file="${item#*:}"
     extract_file="$TMP_DIR/extract-${role}.json"
-    "$PYTHON" "$PROJECT_ROOT/bin/extract-reflections.py" "$file" "$DECISION_DATE" "$role" > "$extract_file"
-    "$PYTHON" - <<PY
+    "$PROJECT_ROOT/bin/extract-reflections.py" "$file" "$DECISION_DATE" "$role" > "$extract_file"
+    python3 - <<PY
 import json
 from pathlib import Path
 batch_path = Path("$BATCH_FILE")
@@ -489,7 +489,7 @@ PY
 done
 
 REFLECTION_OUTPUT="$REPORT_DIR/08-reflection.md"
-"$PYTHON" - <<PY > "$REFLECTION_OUTPUT"
+python3 - <<PY > "$REFLECTION_OUTPUT"
 import json
 from pathlib import Path
 
@@ -502,7 +502,7 @@ for role in ["bull", "bear", "judge", "trader"]:
 print(json.dumps(result, ensure_ascii=False, indent=2))
 PY
 
-if "$PYTHON" "$PROJECT_ROOT/bin/memory.py" --data-dir "$MEMORY_DIR" store-batch < "$BATCH_FILE" 2>&1; then
+if "$PROJECT_ROOT/bin/memory.py" --data-dir "$MEMORY_DIR" store-batch < "$BATCH_FILE" 2>&1; then
     echo "  ✓ 反思记忆已存储"
 else
     echo "  ⚠ 警告: 记忆存储可能失败，但继续完成报告"

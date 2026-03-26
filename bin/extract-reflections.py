@@ -1,4 +1,7 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# dependencies = []
+# ///
 """从 Reflector Agent 输出中提取 JSON 反思结果，转换为 store-batch 格式。
 
 兼容两种格式：
@@ -6,7 +9,7 @@
 2. 新格式：单角色结构化 JSON，对应一个 role
 
 用法:
-  python3 bin/extract-reflections.py <reflection_file> <decision_date> [role]
+  extract-reflections.py <reflection_file> <decision_date> [role]
 
 输出: JSON 数组到 stdout，可 pipe 给 memory.py store-batch
 """

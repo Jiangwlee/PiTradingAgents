@@ -1,70 +1,289 @@
-#!/usr/bin/env python3
-"""
-PiTrader CLI — A 股投资分析平台命令行工具
-
-部署入口脚本，职责：
-1. 从环境变量获取标准路径（由 install.sh 设置的包装脚本传入）
-2. 初始化 Python 路径
-3. 导入并运行 Typer 应用
-
-环境变量（必须）：
-  PITA_HOME          应用根目录 (~/.PiTradingAgents/)
-  PITA_APP_DIR       应用根目录（PITA_HOME 的别名）
-  PITA_DATA_DIR      数据目录 (~/.local/share/PiTradingAgents/)
-  PITA_CONFIG_DIR    配置目录 (~/.config/PiTradingAgents/)
-  ASHARE_API_URL     行情 API 地址
-"""
+#!/usr/bin/env -S uv run --script
+# /// script
+# dependencies = ["typer", "rich", "typing-extensions"]
+# ///
+#
+# pi-trader — A 股投资分析平台 CLI
+#
+# Commands:
+#   run       [DATE]                   运行分析流程
+#   research  [--stocks CODE,CODE]     个股深度研究
+#   reflect   DATE                     复盘反思（自进化）
+#   data      SUBCOMMAND [ARGS...]     市场数据查询
+#   doctor                             系统诊断
 
 import os
+import shutil
+import subprocess
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
+from typing import Optional
+
+import typer
+from rich.console import Console
+from rich.panel import Panel
+from typing_extensions import Annotated
+
+# ── 路径常量 ────────────────────────────────────────────────────────────────
+
+APP_ROOT = Path(__file__).resolve().parent.parent
+DATA_HOME = Path(
+    os.environ.get("PITA_DATA_DIR", Path.home() / ".local/share/PiTradingAgents")
+)
+CONFIG_HOME = Path(
+    os.environ.get("PITA_CONFIG_DIR", Path.home() / ".config/PiTradingAgents")
+)
+ASHARE_API_URL = os.environ.get("ASHARE_API_URL", "http://127.0.0.1:8000")
+
+console = Console()
+app = typer.Typer(
+    name="pi-trader",
+    help="A 股投资分析平台 — 基于多 Agent 协作的题材交易分析系统",
+    add_completion=False,
+)
+
+# ── 辅助函数 ────────────────────────────────────────────────────────────────
 
 
-def get_required_env(var: str) -> str:
-    """获取必需的环境变量，如果不存在则报错"""
-    value = os.environ.get(var)
-    if not value:
-        print(f"[错误] 环境变量 {var} 未设置", file=sys.stderr)
-        print("[错误] 请通过 install.sh 安装，或手动设置环境变量", file=sys.stderr)
-        sys.exit(1)
-    return value
+def _run_script(script_path: Path, args: list[str], title: str = "") -> None:
+    """执行底层脚本，传递标准环境变量。"""
+    if not script_path.exists():
+        console.print(f"[red]✗ [bold]脚本不存在:[/bold] {script_path}")
+        raise typer.Exit(1)
 
+    env = os.environ.copy()
+    env.update(
+        {
+            "PITA_HOME": str(DATA_HOME),
+            "PITA_DATA_DIR": str(DATA_HOME),
+            "PITA_CONFIG_DIR": str(CONFIG_HOME),
+            "PITA_APP_DIR": str(APP_ROOT),
+            "ASHARE_API_URL": ASHARE_API_URL,
+        }
+    )
 
-def setup_environment():
-    """设置运行环境"""
-    # 必需的环境变量（由包装脚本设置）
-    pita_home = get_required_env("PITA_HOME")
-    
-    # 设置 Python 路径，使 cli 包可被导入
-    if pita_home not in sys.path:
-        sys.path.insert(0, pita_home)
-    
-    # 验证目录存在
-    required_dirs = [
-        ("PITA_HOME", pita_home),
-        ("cli 目录", os.path.join(pita_home, "cli")),
-        ("scripts 目录", os.path.join(pita_home, "scripts")),
-    ]
-    
-    for name, path in required_dirs:
-        if not os.path.exists(path):
-            print(f"[错误] {name} 不存在: {path}", file=sys.stderr)
-            print("[错误] 安装可能不完整，请重新运行 install.sh", file=sys.stderr)
-            sys.exit(1)
-
-
-def main():
-    """主入口"""
-    setup_environment()
-    
     try:
-        from cli.app import main as cli_main
-        cli_main()
-    except ImportError as e:
-        print(f"[错误] 无法导入 CLI 模块: {e}", file=sys.stderr)
-        print(f"[错误] Python 路径: {sys.path}", file=sys.stderr)
-        sys.exit(1)
+        result = subprocess.run(
+            [str(script_path), *args],
+            cwd=str(APP_ROOT),
+            env=env,
+            check=True,
+        )
+        raise typer.Exit(result.returncode)
+    except subprocess.CalledProcessError as e:
+        console.print(f"[red]✗ [bold]{title}失败[/bold] (exit {e.returncode})")
+        raise typer.Exit(e.returncode)
 
+
+# ── 命令：run ────────────────────────────────────────────────────────────────
+
+
+@app.command()
+def run(
+    date: Annotated[
+        Optional[str],
+        typer.Argument(help="交易日期 (YYYY-MM-DD)", metavar="DATE"),
+    ] = None,
+    stages: Annotated[
+        Optional[str],
+        typer.Option("--stages", "-s", help="指定执行阶段，如 '1,2,3'"),
+    ] = None,
+    model: Annotated[
+        Optional[str],
+        typer.Option("--model", "-m", help="LLM 模型名称"),
+    ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="实时显示 Agent 推理过程"),
+    ] = False,
+) -> None:
+    """运行分析流程（情绪/题材/趋势分析 → 辩论 → 决策）"""
+    console.print(
+        Panel.fit(
+            "PiTrader — A 股题材交易分析",
+            subtitle=f"交易日期：{date or '自动获取最近交易日'}",
+            border_style="cyan",
+        )
+    )
+
+    args: list[str] = []
+    if verbose:
+        args.append("-v")
+    if stages:
+        args.extend(["-s", stages])
+    if model:
+        args.extend(["-m", model])
+    if date:
+        args.append(date)
+
+    _run_script(APP_ROOT / "bin/run-analysis.sh", args, "分析流程")
+
+
+# ── 命令：research ───────────────────────────────────────────────────────────
+
+
+@app.command()
+def research(
+    stocks: Annotated[
+        Optional[str],
+        typer.Option("--stocks", help="逗号分隔的股票代码，如 '600396,603929'"),
+    ] = None,
+    model: Annotated[
+        Optional[str],
+        typer.Option("--model", "-m", help="LLM 模型名称"),
+    ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="实时显示研究过程"),
+    ] = False,
+) -> None:
+    """个股深度研究（5轮分层淘汰）"""
+    console.print(
+        Panel.fit(
+            "PiTrader — 个股深度研究",
+            subtitle=f"研究标的：{stocks or '自动获取7连阳+历史新高'}",
+            border_style="cyan",
+        )
+    )
+
+    args: list[str] = []
+    if verbose:
+        args.append("-v")
+    if model:
+        args.extend(["-m", model])
+    if stocks:
+        args.extend(["--stocks", stocks])
+
+    _run_script(APP_ROOT / "bin/run-research.sh", args, "深度研究")
+
+
+# ── 命令：reflect ────────────────────────────────────────────────────────────
+
+
+@app.command()
+def reflect(
+    date: Annotated[
+        str,
+        typer.Argument(help="决策日期 (YYYY-MM-DD)", metavar="DATE"),
+    ],
+    model: Annotated[
+        Optional[str],
+        typer.Option("--model", "-m", help="LLM 模型名称"),
+    ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", "-v", help="实时显示反思过程"),
+    ] = False,
+) -> None:
+    """复盘反思（对比预测 vs 实际，生成经验写入记忆）"""
+    console.print(
+        Panel.fit(
+            "PiTrader — 复盘反思与自进化",
+            subtitle=f"决策日期：{date}",
+            border_style="cyan",
+        )
+    )
+
+    args: list[str] = []
+    if verbose:
+        args.append("-v")
+    if model:
+        args.extend(["-m", model])
+    args.append(date)
+
+    _run_script(APP_ROOT / "bin/run-reflect.sh", args, "复盘流程")
+
+
+# ── 命令：data ───────────────────────────────────────────────────────────────
+
+_DATA_SCRIPTS = {
+    "emotion": "fetch-market-emotion.sh",
+    "emotion-history": "fetch-market-emotion-history.sh",
+    "theme-pool": "fetch-theme-pool.sh",
+    "theme-emotion": "fetch-theme-emotion.sh",
+    "theme-emotion-history": "fetch-theme-emotion-history.sh",
+    "theme-stocks": "fetch-theme-stocks.sh",
+    "trend-pool": "fetch-trend-pool.sh",
+    "trend-history": "fetch-trend-stock-history.sh",
+    "review": "fetch-market-review.sh",
+    "consecutive-red": "fetch-consecutive-red.sh",
+    "new-high": "fetch-new-high.sh",
+}
+
+
+@app.command()
+def data(
+    subcommand: Annotated[
+        str,
+        typer.Argument(
+            help="子命令: " + ", ".join(_DATA_SCRIPTS.keys()),
+            metavar="SUBCOMMAND",
+        ),
+    ],
+    args: Annotated[
+        Optional[list[str]],
+        typer.Argument(help="子命令参数"),
+    ] = None,
+) -> None:
+    """市场数据查询（调用 ashare-platform API）"""
+    script_name = _DATA_SCRIPTS.get(subcommand)
+    if not script_name:
+        console.print(f"[red]✗ 未知子命令: {subcommand}")
+        console.print(f"[dim]可用: {', '.join(_DATA_SCRIPTS.keys())}")
+        raise typer.Exit(1)
+
+    _run_script(
+        APP_ROOT / "scripts" / script_name,
+        args or [],
+        f"data {subcommand}",
+    )
+
+
+# ── 命令：doctor ─────────────────────────────────────────────────────────────
+
+
+@app.command()
+def doctor() -> None:
+    """系统诊断（检查依赖和服务状态）"""
+    console.print(Panel.fit("PiTrader — 系统诊断", border_style="cyan"))
+
+    console.print(f"[bold]路径[/bold]")
+    console.print(f"  APP_ROOT     = {APP_ROOT}")
+    console.print(f"  DATA_HOME    = {DATA_HOME}")
+    console.print(f"  CONFIG_HOME  = {CONFIG_HOME}")
+    console.print(f"  API_URL      = {ASHARE_API_URL}")
+    console.print()
+
+    console.print("[bold]依赖[/bold]")
+    for cmd in ("pi", "uv", "jq", "curl"):
+        path = shutil.which(cmd)
+        if path:
+            console.print(f"  [green]✓[/green] {cmd} ({path})")
+        else:
+            console.print(f"  [red]✗[/red] {cmd} 未找到")
+
+    scripts_dir = APP_ROOT / "scripts"
+    if scripts_dir.exists():
+        console.print(f"  [green]✓[/green] data scripts ({scripts_dir})")
+    else:
+        console.print(f"  [red]✗[/red] data scripts 目录缺失")
+    console.print()
+
+    console.print("[bold]服务[/bold]")
+    try:
+        req = urllib.request.Request(f"{ASHARE_API_URL}/health", method="GET")
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            if resp.status == 200:
+                console.print(f"  [green]✓[/green] ashare API 正常")
+            else:
+                console.print(f"  [yellow]![/yellow] ashare API 返回 {resp.status}")
+    except Exception as e:
+        console.print(f"  [red]✗[/red] ashare API 不可达 ({e})")
+
+
+# ── 入口 ─────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    main()
+    app()

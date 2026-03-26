@@ -1,10 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# dependencies = []
+# ///
 """
 Pipeline 状态保存脚本
 从 data/reports/日期/ 目录读取所有 .md 报告文件，提取关键预测字段，输出结构化 state.json 到 stdout
 
 用法:
-    python3 bin/save-state.py <REPORT_DIR> <TRADE_DATE>
+    save-state.py <REPORT_DIR> <TRADE_DATE>
 """
 
 import os
