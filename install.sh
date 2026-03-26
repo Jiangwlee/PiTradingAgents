@@ -4,9 +4,7 @@
 #
 # 功能:
 # - 从 GitHub 克隆/更新代码
-# - 创建 Python 虚拟环境
-# - 安装依赖
-# - 注册 pi-trader 命令
+# - 注册 pi-trader 命令（symlink，依赖由 uv run --script 自管理）
 # - 初始化数据目录
 
 set -euo pipefail
@@ -70,7 +68,7 @@ check_dependencies() {
         echo "请安装以下工具:"
         echo "  - git:    sudo apt install git"
         echo "  - uv:     curl -LsSf https://astral.sh/uv/install.sh | sh"
-        echo "  - python3: sudo apt install python3 python3-venv"
+        echo "  - python3: sudo apt install python3"
         echo "  - curl:   sudo apt install curl"
         echo ""
         exit 1
@@ -98,57 +96,16 @@ clone_or_update() {
     fi
 }
 
-# 创建虚拟环境
-setup_venv() {
-    info "创建 Python 虚拟环境..."
-    
-    cd "$INSTALL_DIR"
-    
-    if [[ -d ".venv" ]]; then
-        info "虚拟环境已存在，跳过创建"
-    else
-        uv venv .venv
-        success "虚拟环境已创建"
-    fi
-}
-
-# 安装依赖
-install_dependencies() {
-    info "安装 Python 依赖..."
-    
-    cd "$INSTALL_DIR"
-    
-    # 使用系统 uv 安装依赖到虚拟环境
-    uv pip install typer rich requests -q --python .venv/bin/python3
-    
-    success "依赖已安装"
-}
-
 # 创建命令入口
 create_command() {
     info "创建命令入口..."
-    
+
     mkdir -p "$BIN_DIR"
-    
-    # 创建 Bash 包装器脚本
-    cat > "$BIN_DIR/pi-trader" << 'EOF'
-#!/bin/bash
-# PiTrader CLI 包装器脚本
-# 自动设置环境变量并调用 Python CLI
 
-# 设置环境变量
-export PITA_HOME="${HOME}/.PiTradingAgents"
-export PITA_APP_DIR="${HOME}/.PiTradingAgents"
-export PITA_DATA_DIR="${PITA_DATA_DIR:-$HOME/.local/share/PiTradingAgents}"
-export PITA_CONFIG_DIR="${PITA_CONFIG_DIR:-$HOME/.config/PiTradingAgents}"
-export ASHARE_API_URL="${ASHARE_API_URL:-http://127.0.0.1:8000}"
+    # symlink 到 bin/pi-trader（自带 uv run --script shebang，无需包装器）
+    ln -sf "$INSTALL_DIR/bin/pi-trader" "$BIN_DIR/pi-trader"
 
-# 执行 Python CLI
-exec "$PITA_HOME/.venv/bin/python3" "$PITA_HOME/cli/app.py" "$@"
-EOF
-    
-    chmod +x "$BIN_DIR/pi-trader"
-    success "命令已注册: $BIN_DIR/pi-trader"
+    success "命令已注册: $BIN_DIR/pi-trader → $INSTALL_DIR/bin/pi-trader"
 }
 
 # 初始化数据目录
@@ -246,8 +203,6 @@ main() {
     
     check_dependencies
     clone_or_update
-    setup_venv
-    install_dependencies
     create_command
     init_directories
     check_ashare_data
