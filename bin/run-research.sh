@@ -185,6 +185,7 @@ echo ""
 
 PI_ARGS=(
     --no-session
+    --print
     --mode text
     --model "$MODEL"
     --system-prompt "$SYSTEM_PROMPT"
