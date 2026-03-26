@@ -11,7 +11,7 @@ PiTradingAgents 是一个 A 股投资分析系统，采用多 Agent 协作架构
 - 📊 六阶段情绪周期理论量化分析
 - 💡 自进化机制（复盘反思 + BM25 记忆检索）
 - 🔌 集成 ashare-platform 行情数据 API
-- 🌐 支持 Chrome CDP 深度研究（可选）
+- 🌐 支持 `omp-web-operator` 深度研究（可选）
 
 ## 快速开始
 

@@ -187,7 +187,7 @@ PiTradingAgents/
 | 属性 | 值 |
 |------|------|
 | 职责 | 对 Top N 题材进行深度研究，挖掘真实驱动力、识别最符合题材方向的核心个股 |
-| 输入数据 | ashare API（题材池 + 成分股）+ chrome-cdp（Google/淘股吧/雪球） |
+| 输入数据 | ashare API（题材池 + 成分股）+ `omp-web-operator`（Google/淘股吧/雪球） |
 | 输出 | 每个题材的深度研究报告（驱动力 + 核心个股 + 市场叙事） |
 | Skill 模式 | Pipeline（10 轮迭代研究，结构化模板强制填写） |
 | 依赖 | 需要 Chrome 浏览器运行 |
@@ -217,9 +217,9 @@ PiTradingAgents/
 
 | 渠道 | 搜索脚本 | 阅读脚本 |
 |------|---------|---------|
-| Google | `~/.agents/skills/chrome-cdp/scripts/sites/google/search.sh <query>` | 使用 cdp 阅读搜索结果链接 |
-| 淘股吧 | `~/.agents/skills/chrome-cdp/scripts/sites/taoguba/search.sh <query>` | `taoguba/open-post.sh <url>` |
-| 雪球 | `~/.agents/skills/chrome-cdp/scripts/sites/xueqiu/search.sh <query>` | `xueqiu/open-post.sh <url>` |
+| Google | `omp-web-operator search google "<query>" [limit]` | `omp-web-operator read-url "<url>"` |
+| 淘股吧 | `omp-web-operator search taoguba "<query>" [limit]` | `omp-web-operator open-post taoguba "<url>"` |
+| 雪球 | `omp-web-operator search xueqiu "<query>" [limit]` | `omp-web-operator open-post xueqiu "<url>"` |
 
 **10 轮研究模板**（每个题材）：
 
@@ -604,9 +604,9 @@ BASE_URL="${ASHARE_API_URL:-http://127.0.0.1:8000}"
 curl -sf "$BASE_URL/theme-emotion/daily?trade_date=$TRADE_DATE&limit=$LIMIT&sort=$SORT" | jq .
 ```
 
-### 5.2 chrome-cdp Skill（复用）
+### 5.2 web-operator Skill（复用）
 
-催化剂分析师复用现有的 `~/.agents/skills/chrome-cdp/` skill，调用以下脚本：
+催化剂分析师复用现有的 `~/.agents/skills/web-operator/` skill，通过 `omp-web-operator` 调用站点工作流：
 
 | 渠道 | 脚本 | 用途 |
 |------|------|------|
@@ -626,7 +626,7 @@ curl -sf "$BASE_URL/theme-emotion/daily?trade_date=$TRADE_DATE&limit=$LIMIT&sort
 | Agent 框架 | Pi（.md 格式 agent 定义）|
 | 编排方式 | Shell 脚本 (Conductor) |
 | 数据接口 | ashare-platform HTTP API (localhost:8000) |
-| 深度研究 | chrome-cdp Skill (需 Chrome 运行，催化剂分析师使用) |
+| 深度研究 | web-operator Skill / `omp-web-operator` (需浏览器调试环境，催化剂分析师使用) |
 | 运行环境 | 当前主机本地执行 |
 | 运行频率 | 手动触发（shell 脚本） |
 
@@ -640,7 +640,7 @@ curl -sf "$BASE_URL/theme-emotion/daily?trade_date=$TRADE_DATE&limit=$LIMIT&sort
 - [ ] 2 个裁判 Agent（市场/题材）
 - [ ] 1 个投资经理 Agent
 - [ ] ashare-data Skill（9 个数据采集脚本）
-- [ ] chrome-cdp Skill 复用（催化剂分析师的搜索/阅读能力）
+- [ ] web-operator Skill 复用（催化剂分析师的搜索/阅读能力）
 - [ ] Conductor 编排脚本
 - [ ] 最终报告输出
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # run-research.sh — 个股深度研究编排脚本
-# 用法: run-research.sh [-v] [-m MODEL] [--stocks CODE1,CODE2]
+# 用法: run-research.sh [--mode text|stream|json|interactive] [-m MODEL] [--stocks CODE1,CODE2]
 
 set -euo pipefail
 
@@ -8,6 +8,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$PROJECT_ROOT/bin/lib/pi-runner.sh"
 
 PITA_HOME="${PITA_HOME:-$HOME/.local/share/PiTradingAgents}"
 
@@ -20,14 +21,15 @@ API_URL="${ASHARE_API_URL:-http://127.0.0.1:8000}"
 mkdir -p "$REPORTS_ROOT"
 
 # 解析命令行参数
-VERBOSE=false
+MODE="text"
 MODEL_OVERRIDE=""
 STOCKS=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -v|--verbose)
-            VERBOSE=true
+        --mode)
+            MODE="${2:-}"
+            shift
             shift
             ;;
         -m|--model)
@@ -40,7 +42,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -*)
             echo "未知选项: $1" >&2
-            echo "用法: $0 [-v] [-m MODEL] [--stocks CODE1,CODE2]" >&2
+            echo "用法: $0 [--mode text|stream|json|interactive] [-m MODEL] [--stocks CODE1,CODE2]" >&2
             exit 1
             ;;
         *)
@@ -97,27 +99,10 @@ else
     AGENT_MD="$PROJECT_ROOT/agents/researchers/stock-researcher.md"
 fi
 
-# ======== 读取 Agent 配置 ========
-
 if [[ ! -f "$AGENT_MD" ]]; then
     echo "[错误] Agent 文件不存在: $AGENT_MD" >&2
     exit 1
 fi
-
-MODEL="$(awk -F': ' '/^model:/{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}' "$AGENT_MD")"
-TOOLS="$(awk -F': ' '/^tools:/{gsub(/[[:space:]]/, "", $2); print $2; exit}' "$AGENT_MD")"
-SYSTEM_PROMPT="$(awk 'BEGIN{n=0} /^---/{n++; next} n>=2{print}' "$AGENT_MD")"
-
-# 命令行 --model 覆盖 frontmatter
-[[ -n "$MODEL_OVERRIDE" ]] && MODEL="$MODEL_OVERRIDE"
-
-# 简短模型名 → 完整 provider/id
-case "$MODEL" in
-    kimi-k2-thinking) MODEL="kimi-coding/kimi-k2-thinking" ;;
-    kimi-k2p5)        MODEL="kimi-coding/kimi-k2p5" ;;
-    qwen3.5-35b)      MODEL="litellm-local/qwen3.5-35b" ;;
-    qwen3.5-27b)      MODEL="litellm-local/qwen3.5-27b" ;;
-esac
 
 # ======== 构建研究提示词 ========
 
@@ -179,33 +164,14 @@ else
     echo "研究模式: 默认（7连阳+历史新高）"
 fi
 echo "输出文件: $OUTPUT_FILE"
-$VERBOSE && echo "输出模式: verbose（实时显示推理过程）"
+echo "输出模式: $MODE"
 echo "=============================================="
 echo ""
 
-PI_ARGS=(
-    --no-session
-    --print
-    --mode text
-    --model "$MODEL"
-    --system-prompt "$SYSTEM_PROMPT"
-    --skill "$PROJECT_ROOT/skills/ashare-data"
-    "@$PROMPT_FILE"
-)
+export MODEL_OVERRIDE
+PI_JSON_LOG="$TMP_DIR/research.jsonl" run_agent_node "$MODE" "个股研究" "$OUTPUT_FILE" "$AGENT_MD" "@$PROMPT_FILE"
 
-if $VERBOSE; then
-    pi "${PI_ARGS[@]}" 2>&1 | tee "$OUTPUT_FILE"
-else
-    pi "${PI_ARGS[@]}" > "$OUTPUT_FILE" 2>"$TMP_DIR/pi-stderr.log"
-fi
-
-# 如果 pi 无输出，显示 stderr 帮助诊断
-if [[ ! -s "$OUTPUT_FILE" && -s "$TMP_DIR/pi-stderr.log" ]]; then
-    echo "[错误] pi 执行失败，stderr:" >&2
-    cat "$TMP_DIR/pi-stderr.log" >&2
-fi
-
-if [[ ! -s "$OUTPUT_FILE" ]]; then
+if [[ "$MODE" != "interactive" && ! -s "$OUTPUT_FILE" ]]; then
     echo "[错误] Agent 未生成报告文件: $OUTPUT_FILE" >&2
     exit 1
 fi
@@ -213,10 +179,14 @@ fi
 echo ""
 echo "=============================================="
 echo "研究完成 ✓"
-echo "Markdown: $OUTPUT_FILE"
+if [[ "$MODE" == "interactive" ]]; then
+    echo "interactive 模式未自动生成 Markdown 报告"
+else
+    echo "Markdown: $OUTPUT_FILE"
+fi
 
 # 生成 PDF（桌面版 + 手机版）
-if [[ -f "$OUTPUT_FILE" && -f "$CONVERT_PY" ]]; then
+if [[ "$MODE" != "interactive" && -f "$OUTPUT_FILE" && -f "$CONVERT_PY" ]]; then
     echo "正在生成 PDF（桌面版）..."
     python3 "$CONVERT_PY" "$OUTPUT_FILE" \
         --mode report --format pdf --same-dir --stdout-manifest 2>/dev/null \

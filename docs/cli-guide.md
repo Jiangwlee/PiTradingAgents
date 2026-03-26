@@ -37,7 +37,7 @@ pi-trader --help
 pi-trader run [DATE]
 
 # 运行复盘反思
-pi-trader insight DATE
+pi-trader reflect DATE
 
 # 查询市场数据
 pi-trader data <subcommand> [args...]
@@ -63,7 +63,11 @@ pi-trader run [OPTIONS] [DATE]
 **选项：**
 - `-m, --model TEXT`: 指定 LLM 模型名称
   - 支持：`qwen3.5-35b`, `qwen3.5-27b`, `kimi-k2p5`, `kimi-k2-thinking`
-- `-v, --verbose`: 详细输出模式，实时显示 Agent 推理过程
+- `--mode [text|stream|json|interactive]`: 运行模式
+  - `text`: 默认，输出最终文本
+  - `stream`: 人类可读流式输出；`run` 在并行阶段采用 workflow-safe stream，避免多 Agent 混流
+  - `json`: 输出 JSON 事件流
+  - `interactive`: 进入 Pi TUI（当前仅 `research` 支持）
 - `-s, --stages TEXT`: 指定执行阶段，如 `'1,2,3'`；空 = 全部执行
 
 **示例：**
@@ -71,14 +75,14 @@ pi-trader run [OPTIONS] [DATE]
 # 使用默认配置分析最新交易日
 pi-trader run 2026-03-24
 
-# 使用 Qwen3.5-35B 模型进行详细分析
-pi-trader run -v -m qwen3.5-35b 2026-03-24
+# 使用 Qwen3.5-35B 模型并流式查看执行过程
+pi-trader run --mode stream -m qwen3.5-35b 2026-03-24
 
 # 仅执行阶段 3（题材辩论）
 pi-trader run -s 3 2026-03-24
 
 # 组合多个选项（任意顺序）
-pi-trader run -v -s 1,2,4 -m kimi-k2-thinking 2026-03-24
+pi-trader run --mode json -s 1,2,4 -m kimi-k2-thinking 2026-03-24
 ```
 
 **Pipeline 阶段说明：**
@@ -88,13 +92,13 @@ pi-trader run -v -s 1,2,4 -m kimi-k2-thinking 2026-03-24
 - **阶段 4**: 最终决策（投资经理生成报告）
 - **阶段 5**: 状态保存（为次日复盘准备）
 
-### `insight` - 运行复盘反思（自进化）
+### `reflect` - 运行复盘反思（自进化）
 
 对比决策日预测与次日实际结果，生成结构化反思并注入历史经验，实现系统的自进化能力。
 
 **用法：**
 ```bash
-pi-trader insight [OPTIONS] DATE
+pi-trader reflect [OPTIONS] DATE
 ```
 
 **参数：**
@@ -103,15 +107,16 @@ pi-trader insight [OPTIONS] DATE
 **选项：**
 - `-m, --model TEXT`: 指定 Reflector Agent 使用的 LLM 模型
   - 支持：`qwen3.5-35b`, `qwen3.5-27b`, `kimi-k2p5`, `kimi-k2-thinking`
-- `-v, --verbose`: 详细输出模式，实时显示反思过程
+- `--mode [text|stream|json]`: 运行模式
+  - `interactive` 当前不支持，因为反思流程包含多个角色
 
 **示例：**
 ```bash
 # 对 2026-03-20 的决策进行复盘
-pi-trader insight 2026-03-20
+pi-trader reflect 2026-03-20
 
-# 使用自定义模型进行详细复盘
-pi-trader insight -v -m qwen3.5-35b 2026-03-20
+# 使用自定义模型并流式查看反思过程
+pi-trader reflect --mode stream -m qwen3.5-35b 2026-03-20
 ```
 
 **自进化机制说明：**
@@ -217,21 +222,21 @@ cd ~/ashare-platform
 ./start.sh
 ```
 
-### 问题：Chrome CDP Skill 不可用
+### 问题：web-operator 不可用
 
 **解决方案：**
-Chrome CDP Skill 不可用时，催化剂分析师会自动降级处理，其他功能不受影响：
+`omp-web-operator` 不可用时，催化剂分析师会自动降级处理，其他功能不受影响：
 ```bash
 pi-trader run 2026-03-24
 ```
 
 如需启用深度研究功能：
 ```bash
-# 安装 Chrome CDP Skill
-git clone https://github.com/your-org/chrome-cdp-skill.git ~/.agents/skills/chrome-cdp
+# 安装 web-operator Skill 并确保 `omp-web-operator` 可执行
+omp install skill web-operator
 ```
 
-### 问题：Insight 命令失败
+### 问题：reflect 命令失败
 
 **症状**: `state.json 不存在`
 
@@ -243,7 +248,7 @@ git clone https://github.com/your-org/chrome-cdp-skill.git ~/.agents/skills/chro
 pi-trader run 2026-03-24
 
 # 再运行复盘（在次日或之后）
-pi-trader insight 2026-03-24
+pi-trader reflect 2026-03-24
 ```
 
 ## 最佳实践
@@ -254,7 +259,7 @@ pi-trader insight 2026-03-24
 pi-trader run 2026-03-24
 
 # 次日早上复盘
-pi-trader insight 2026-03-24
+pi-trader reflect 2026-03-24
 ```
 
 ### 调试特定阶段

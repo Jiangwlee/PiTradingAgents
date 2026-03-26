@@ -57,7 +57,7 @@ PiTradingAgents/
 │
 └── github/                             # 参考项目（只读，不修改）
     ├── TradingAgents/                  # 参考：Agent 团队架构
-    ├── chrome-cdp-skill/               # 参考：Skill 架构和 Agent 定义格式
+    ├── chrome-cdp-skill/               # 浏览器自动化参考项目（只读）
     ├── ashare-platform/                # 参考：数据采集（已部署为独立服务）
     └── pi-mono/                        # 参考：Pi Agent 框架源码
 ```
@@ -69,7 +69,7 @@ PiTradingAgents/
 | Agent 框架 | Pi (pi-coding-agent) | .md 文件定义 Agent，YAML frontmatter + system prompt |
 | LLM | qwen3.5-35b | 所有 Agent 统一使用此模型 |
 | 数据接口 | ashare-platform (FastAPI) | 本地运行 http://127.0.0.1:8000 |
-| 深度研究 | chrome-cdp Skill | 催化剂分析师通过 Google/淘股吧/雪球搜索和阅读 |
+| 深度研究 | web-operator Skill (`omp-web-operator`) | 催化剂分析师通过 Google/淘股吧/雪球搜索和阅读 |
 | 编排 | Shell 脚本 | bin/run-analysis.sh 按 Pipeline 模式调度各 Agent |
 | 语言 | Shell (脚本) | Skills 层为 bash curl wrapper |
 | 记忆检索 | BM25 + jieba | bin/memory.py，中文分词语义匹配历史教训 |
@@ -81,8 +81,8 @@ PiTradingAgents/
 
 - **Pi CLI** — Agent 运行时，通过 `pi --print --agent <file.md>` 调用
 - **ashare-platform** — 数据 API 服务，需在本地 8000 端口运行
-- **Chrome 浏览器** — 催化剂分析师通过 chrome-cdp 进行网络搜索（可选，不可用时降级）
-- **chrome-cdp Skill** — 安装在 `~/.agents/skills/chrome-cdp/`
+- **Chrome 浏览器** — `omp-web-operator` 连接本地浏览器进行网络搜索（可选，不可用时降级）
+- **web-operator Skill** — 安装在 `~/.agents/skills/web-operator/`
 - **jq** — JSON 处理
 - **curl** — API 调用
 - **uv** — Python 脚本通过 `uv run --script` 运行，自动管理依赖（无需手动 venv）

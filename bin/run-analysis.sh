@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # run-analysis.sh — Pipeline Conductor 编排脚本
-# A股题材交易分析 Agent 团队编排脚本
+# 用法: run-analysis.sh [--mode text|stream|json] [-s 1,2,3] [-m MODEL] [YYYY-MM-DD]
 
 set -euo pipefail
 
@@ -9,6 +9,7 @@ set -euo pipefail
 # 获取项目根目录（脚本所在目录的父目录）
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$PROJECT_ROOT/bin/lib/pi-runner.sh"
 
 # Python 脚本使用 uv run --script（shebang 驱动，无需 venv）
 
@@ -32,13 +33,14 @@ BEAR_MEMORY=""
 JUDGE_MEMORY=""
 
 # 解析命令行参数
-VERBOSE=false
+MODE="text"
 STAGES=""        # 空 = 全部阶段；否则逗号分隔，如 "2,3"
 MODEL_OVERRIDE="" # 空 = 使用 Agent frontmatter 中的模型
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -v|--verbose)
-            VERBOSE=true
+        --mode)
+            MODE="${2:-}"
+            shift
             shift
             ;;
         -s|--stages)
@@ -51,7 +53,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -*)
             echo "未知选项: $1" >&2
-            echo "用法: $0 [-v|--verbose] [-s|--stages 1,2,3] [-m|--model MODEL] [YYYY-MM-DD]" >&2
+            echo "用法: $0 [--mode text|stream|json|interactive] [-s|--stages 1,2,3] [-m|--model MODEL] [YYYY-MM-DD]" >&2
             exit 1
             ;;
         *)
@@ -99,6 +101,11 @@ else
     TRADE_DATE=$(resolve_trade_date)
 fi
 
+if [[ "$MODE" == "interactive" ]]; then
+    echo "[错误] run 命令暂不支持 interactive 模式：多 Agent workflow 无法映射到单一 Pi TUI 会话" >&2
+    exit 1
+fi
+
 # 输出目录
 REPORT_DIR="$REPORTS_ROOT/$TRADE_DATE"
 mkdir -p "$REPORT_DIR"
@@ -107,126 +114,80 @@ mkdir -p "$REPORT_DIR"
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-# 从 pi JSON 事件流中提取最终一轮 LLM 文本
-# 多轮 agent 对话中取最后一条 message 的完整文本
-extract_final_text() {
-    python3 -c "
-import json, sys
-text = ''
-for line in open(sys.argv[1]):
-    try:
-        ev = json.loads(line.strip())
-        tp = ev.get('type', '')
-        if tp in ('message_update', 'message_end'):
-            parts = ev.get('message', {}).get('content', [])
-            t = ''.join(p.get('text', '') for p in parts if p.get('type') == 'text')
-            if t:
-                text = t
-    except Exception:
-        pass
-sys.stdout.write(text)
-" "$1"
-}
-
-# Agent 执行封装：从 agent .md 解析 frontmatter，正确传递 --system-prompt/--model/--tools
-# 用法: run_agent <label> <output_file> <agent_md> <message|@file>
-#
-# 参照 chrome-cdp-skill/agents/bin/ 的调用模式：
-#   awk 从 agent .md 提取 model、tools、system prompt，通过 pi 参数传入，
-#   避免 LLM 误将 agent .md 路径当做消息处理。
-#
-# 非 verbose 模式: pi --print，只输出最终文本到报告文件
-# verbose 模式:    pi --mode json | pi-watch，实时显示 tool calls 和流式文本
 run_agent() {
     local label="$1"
     local output_file="$2"
     local agent_md="$3"
     shift 3
-    # 剩余 $@ = [--skill <dir>...] <message 或 @file>
+    export MODEL_OVERRIDE
+    run_agent_node "$MODE" "$label" "$output_file" "$agent_md" "$@"
+}
 
-    local append_system_prompt=""
-    local passthrough=()
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --append-system-prompt-file)
-                local append_file="${2:-}"
-                [[ -z "$append_file" ]] && {
-                    echo "[错误] --append-system-prompt-file 缺少路径" >&2
-                    return 1
-                }
-                local append_content
-                append_content="$(cat "$append_file")"
-                if [[ -n "$append_system_prompt" ]]; then
-                    append_system_prompt+=$'\n\n'
-                fi
-                append_system_prompt+="$append_content"
-                shift 2
-                ;;
-            *)
-                passthrough+=("$1")
-                shift
-                ;;
-        esac
-    done
+parallel_json_log_path() {
+    local output_file="$1"
+    echo "$TMP_DIR/$(basename "$output_file" .md).jsonl"
+}
 
-    # 从 agent .md frontmatter 解析 model 和 tools
-    local model tools system_prompt
-    model="$(awk -F': ' '/^model:/{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}' "$agent_md")"
-    tools="$(awk -F': ' '/^tools:/{gsub(/[[:space:]]/, "", $2); print $2; exit}' "$agent_md")"
-    # 提取 frontmatter 之后的正文作为 system prompt（跳过两个 --- 分隔符）
-    system_prompt="$(awk 'BEGIN{n=0} /^---/{n++; next} n>=2{print}' "$agent_md")"
+start_parallel_stream_renderer() {
+    local pid="$1"
+    local label="$2"
+    local output_file="$3"
+    local json_log
+    json_log="$(parallel_json_log_path "$output_file")"
+    python3 "$PROJECT_ROOT/bin/lib/pi-stream.py" render-follow \
+        --label "$label" \
+        --file "$json_log" \
+        --pid "$pid" &
+    RENDERER_PID=$!
+}
 
-    # 命令行 --model 覆盖 frontmatter 中的模型
-    [[ -n "$MODEL_OVERRIDE" ]] && model="$MODEL_OVERRIDE"
+run_parallel_agent() {
+    local label="$1"
+    local output_file="$2"
+    local agent_md="$3"
+    shift 3
 
-    # 将简短模型名映射到完整 provider/id
-    case "$model" in
-        kimi-k2-thinking) model="kimi-coding/kimi-k2-thinking" ;;
-        qwen3.5-35b)      model="litellm-local/qwen3.5-35b" ;;
-    esac
-
-    local pi_args=(
-        --model "$model"
-        --tools "$tools"
-        --system-prompt "$system_prompt"
-        --skill "$PROJECT_ROOT/skills/ashare-data"
-    )
-    if [[ -n "$append_system_prompt" ]]; then
-        pi_args+=(--append-system-prompt "$append_system_prompt")
-    fi
-    pi_args+=("${passthrough[@]}")
-
-    if $VERBOSE; then
-        # 按角色分配颜色（只着色 [label] 部分）
-        local ESC=$'\033' color
-        case "$label" in
-            情绪分析师)       color="36"  ;;  # cyan
-            题材分析师)       color="32"  ;;  # green
-            趋势分析师)       color="33"  ;;  # yellow
-            催化剂分析师)     color="35"  ;;  # magenta
-            看多辩手|题材*看多) color="91" ;;  # bright red   (多/涨)
-            看空辩手|题材*看空) color="92" ;;  # bright green (空/跌)
-            市场裁判)         color="34"  ;;  # blue
-            题材裁判)         color="96"  ;;  # bright cyan
-            投资经理)         color="97"  ;;  # bright white
-            *)                color="37"  ;;  # white
-        esac
-        local lc="${ESC}[${color}m[${label}]${ESC}[0m"
-
-        local json_log="$TMP_DIR/$(basename "$output_file" .md).jsonl"
-        echo "  ${lc} >>>" >&2
-        pi --no-session --mode json \
-           "${pi_args[@]}" \
-            | tee "$json_log" \
-            | pi-watch 2> >(sed "s/^/${lc} /" >&2) \
-            | sed "s/^/${lc} /"
-        echo "" >&2
-        echo "  ${lc} <<<" >&2
-        extract_final_text "$json_log" > "$output_file"
+    if [[ "$MODE" == "stream" || "$MODE" == "json" ]]; then
+        local json_log
+        json_log="$(parallel_json_log_path "$output_file")"
+        export MODEL_OVERRIDE
+        PI_JSON_LOG="$json_log" run_agent_node "capture" "$label" "$output_file" "$agent_md" "$@"
+        if [[ "${PI_DEFER_RENDER:-0}" == "1" ]]; then
+            :
+        elif [[ "$MODE" == "stream" ]]; then
+            render_completed_stream_block "$label" "$agent_md" "$json_log"
+        else
+            cat "$json_log"
+        fi
     else
-        pi --no-session --print \
-           "${pi_args[@]}" \
-            > "$output_file" 2>&1
+        export MODEL_OVERRIDE
+        run_agent_node "$MODE" "$label" "$output_file" "$agent_md" "$@"
+    fi
+}
+
+finish_parallel_agent() {
+    local pid="$1"
+    local label="$2"
+    local output_file="$3"
+    local agent_md="$4"
+    local status_file="$5"
+    local renderer_pid="${6:-}"
+
+    wait "$pid" || true
+    if [[ "$MODE" == "stream" && -n "$renderer_pid" ]]; then
+        wait "$renderer_pid" || true
+    elif [[ "$MODE" == "json" ]]; then
+        local json_log
+        json_log="$(parallel_json_log_path "$output_file")"
+        if [[ -f "$json_log" ]]; then
+            cat "$json_log"
+        fi
+    fi
+
+    if [[ -f "$status_file" && "$(cat "$status_file")" == "ok" ]]; then
+        echo "[分析师] ${label}完成 ✓"
+    else
+        echo "[警告] ${label}执行失败，继续执行其他任务"
     fi
 }
 
@@ -234,13 +195,13 @@ echo "=============================================="
 echo "PiTradingAgents — A股题材交易分析 Pipeline"
 echo "交易日期: $TRADE_DATE"
 echo "输出目录: $REPORT_DIR"
-$VERBOSE && echo "模式: verbose（实时输出 Agent 推理过程）"
+echo "模式: $MODE"
 [[ -n "$STAGES" ]]        && echo "执行阶段: $STAGES"
 [[ -n "$MODEL_OVERRIDE" ]] && echo "模型覆盖: $MODEL_OVERRIDE"
 echo "=============================================="
 
-# Chrome CDP Skill 路径（仅用于本地可用性检查；不再通过 --skill 显式传入）
-CHROME_CDP_SKILL="$HOME/.agents/skills/chrome-cdp"
+# web-operator CLI 可用性检查
+OMP_WEB_OPERATOR_BIN="omp-web-operator"
 
 # ======== 阶段 1: 分析团队（并行） ========
 
@@ -252,58 +213,66 @@ echo "启动 4 个分析师..."
 
 # 1. 情绪分析师
 (
-    echo "[分析师] 情绪分析师启动..."
-    run_agent "情绪分析师" "$REPORT_DIR/01-emotion-report.md" "$PROJECT_ROOT/agents/analysts/emotion-analyst.md" "/skill:ashare-data ${TRADE_DATE}" && \
-    echo "[分析师] 情绪分析师完成 ✓" || \
-    echo "[警告] 情绪分析师执行失败，继续执行其他任务"
+    PI_DEFER_RENDER=1 run_parallel_agent "情绪分析师" "$REPORT_DIR/01-emotion-report.md" "$PROJECT_ROOT/agents/analysts/emotion-analyst.md" "/skill:ashare-data ${TRADE_DATE}" \
+        && echo ok > "$TMP_DIR/emotion.status" || echo fail > "$TMP_DIR/emotion.status"
 ) &
 PID_EMOTION=$!
+RENDER_PID_EMOTION=""
+if [[ "$MODE" == "stream" ]]; then
+    start_parallel_stream_renderer "$PID_EMOTION" "情绪分析师" "$REPORT_DIR/01-emotion-report.md"
+    RENDER_PID_EMOTION="$RENDERER_PID"
+fi
+echo "[分析师] 情绪分析师启动..."
 
 # 2. 题材分析师
 (
-    echo "[分析师] 题材分析师启动..."
-    run_agent "题材分析师" "$REPORT_DIR/02-theme-report.md" "$PROJECT_ROOT/agents/analysts/theme-analyst.md" "/skill:ashare-data ${TRADE_DATE}" && \
-    echo "[分析师] 题材分析师完成 ✓" || \
-    echo "[警告] 题材分析师执行失败，继续执行其他任务"
+    PI_DEFER_RENDER=1 run_parallel_agent "题材分析师" "$REPORT_DIR/02-theme-report.md" "$PROJECT_ROOT/agents/analysts/theme-analyst.md" "/skill:ashare-data ${TRADE_DATE}" \
+        && echo ok > "$TMP_DIR/theme.status" || echo fail > "$TMP_DIR/theme.status"
 ) &
 PID_THEME=$!
+RENDER_PID_THEME=""
+if [[ "$MODE" == "stream" ]]; then
+    start_parallel_stream_renderer "$PID_THEME" "题材分析师" "$REPORT_DIR/02-theme-report.md"
+    RENDER_PID_THEME="$RENDERER_PID"
+fi
+echo "[分析师] 题材分析师启动..."
 
 # 3. 趋势分析师
 (
-    echo "[分析师] 趋势分析师启动..."
-    run_agent "趋势分析师" "$REPORT_DIR/03-trend-report.md" "$PROJECT_ROOT/agents/analysts/trend-analyst.md" "/skill:ashare-data ${TRADE_DATE}" && \
-    echo "[分析师] 趋势分析师完成 ✓" || \
-    echo "[警告] 趋势分析师执行失败，继续执行其他任务"
+    PI_DEFER_RENDER=1 run_parallel_agent "趋势分析师" "$REPORT_DIR/03-trend-report.md" "$PROJECT_ROOT/agents/analysts/trend-analyst.md" "/skill:ashare-data ${TRADE_DATE}" \
+        && echo ok > "$TMP_DIR/trend.status" || echo fail > "$TMP_DIR/trend.status"
 ) &
 PID_TREND=$!
+RENDER_PID_TREND=""
+if [[ "$MODE" == "stream" ]]; then
+    start_parallel_stream_renderer "$PID_TREND" "趋势分析师" "$REPORT_DIR/03-trend-report.md"
+    RENDER_PID_TREND="$RENDERER_PID"
+fi
+echo "[分析师] 趋势分析师启动..."
 
-# 4. 催化剂分析师（检查 Chrome 可用性）
+# 4. 催化剂分析师（检查 web-operator 可用性）
 (
-    echo "[分析师] 催化剂分析师启动..."
-    if [[ -d "$CHROME_CDP_SKILL" && -f "$CHROME_CDP_SKILL/scripts/sites/google/search.sh" ]]; then
-        echo "  Chrome CDP Skill 可用，启动深度研究..."
-        run_agent "催化剂分析师" "$REPORT_DIR/04-catalyst-report.md" "$PROJECT_ROOT/agents/analysts/catalyst-analyst.md" "/skill:ashare-data ${TRADE_DATE}" && \
-        echo "[分析师] 催化剂分析师完成 ✓" || \
-        echo "[警告] 催化剂分析师执行失败，继续执行其他任务"
+    if command -v "$OMP_WEB_OPERATOR_BIN" >/dev/null 2>&1; then
+        PI_DEFER_RENDER=1 run_parallel_agent "催化剂分析师" "$REPORT_DIR/04-catalyst-report.md" "$PROJECT_ROOT/agents/analysts/catalyst-analyst.md" "/skill:ashare-data ${TRADE_DATE}" \
+            && echo ok > "$TMP_DIR/catalyst.status" || echo fail > "$TMP_DIR/catalyst.status"
     else
-        echo "  Chrome CDP Skill 不可用，生成降级提示..."
         cat > "$REPORT_DIR/04-catalyst-report.md" << 'EOF'
 ## 催化剂深度研究报告
 
 ### 降级模式
 
-**状态**: Chrome CDP Skill 不可用，深度研究跳过
+**状态**: `omp-web-operator` 不可用，深度研究跳过
 
 **原因**: 
-- Chrome 浏览器未运行，或
-- chrome-cdp skill 未安装 ($HOME/.agents/skills/chrome-cdp)
+- `omp-web-operator` 命令不可用，或
+- 本地浏览器调试环境未就绪
 
 **影响**:
 - 无法进行 Google/淘股吧/雪球的深度搜索和研究
 - 辩论团队将仅基于量化数据进行分析
 
 **建议**:
-- 如需深度研究，请启动 Chrome 并确保 chrome-cdp skill 已正确安装
+- 如需深度研究，请确保 `omp-web-operator` 可执行且浏览器调试环境可用
 - 或继续使用现有量化分析报告进行后续分析
 
 ### 可用数据源
@@ -313,17 +282,26 @@ PID_TREND=$!
 - 题材分析师：主流题材排名、题材周期阶段
 - 趋势分析师：核心标的池、个股评级
 EOF
-        echo "[分析师] 催化剂分析师降级模式完成（Chrome 不可用）"
+        echo ok > "$TMP_DIR/catalyst.status"
     fi
 ) &
 PID_CATALYST=$!
+RENDER_PID_CATALYST=""
+if [[ "$MODE" == "stream" ]]; then
+    start_parallel_stream_renderer "$PID_CATALYST" "催化剂分析师" "$REPORT_DIR/04-catalyst-report.md"
+    RENDER_PID_CATALYST="$RENDERER_PID"
+fi
+echo "[分析师] 催化剂分析师启动..."
+if ! command -v "$OMP_WEB_OPERATOR_BIN" >/dev/null 2>&1; then
+    echo "  omp-web-operator 不可用，催化剂分析师将输出降级报告"
+fi
 
 # 等待所有分析师完成
 echo "等待所有分析师完成..."
-wait $PID_EMOTION || true
-wait $PID_THEME || true
-wait $PID_TREND || true
-wait $PID_CATALYST || true
+finish_parallel_agent "$PID_EMOTION" "情绪分析师" "$REPORT_DIR/01-emotion-report.md" "$PROJECT_ROOT/agents/analysts/emotion-analyst.md" "$TMP_DIR/emotion.status" "$RENDER_PID_EMOTION"
+finish_parallel_agent "$PID_THEME" "题材分析师" "$REPORT_DIR/02-theme-report.md" "$PROJECT_ROOT/agents/analysts/theme-analyst.md" "$TMP_DIR/theme.status" "$RENDER_PID_THEME"
+finish_parallel_agent "$PID_TREND" "趋势分析师" "$REPORT_DIR/03-trend-report.md" "$PROJECT_ROOT/agents/analysts/trend-analyst.md" "$TMP_DIR/trend.status" "$RENDER_PID_TREND"
+finish_parallel_agent "$PID_CATALYST" "催化剂分析师" "$REPORT_DIR/04-catalyst-report.md" "$PROJECT_ROOT/agents/analysts/catalyst-analyst.md" "$TMP_DIR/catalyst.status" "$RENDER_PID_CATALYST"
 echo "阶段 1 完成"
 
 fi  # end should_run_stage 1

@@ -13,7 +13,7 @@
 - **Reddit query**: "wind power policy China 2026"
 
 ### 数据获取方式
-由于 chrome-cdp skill 需要 Chrome 浏览器运行环境，改用 ashare-platform API 获取市场数据。
+由于 `omp-web-operator` 需要本地浏览器调试环境，改用 ashare-platform API 获取市场数据。
 
 ### 关键信息发现
 

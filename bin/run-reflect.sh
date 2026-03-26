@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # run-reflect.sh — 复盘编排脚本
-# 对比决策日预测与次日实际结果，按角色独立生成结构化反思并存储到记忆
+# 用法: run-reflect.sh [--mode text|stream|json] [-m MODEL] YYYY-MM-DD
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$PROJECT_ROOT/bin/lib/pi-runner.sh"
 # Python 脚本使用 uv run --script（shebang 驱动，无需 venv）
 API_URL="${ASHARE_API_URL:-http://127.0.0.1:8000}"
 PITA_HOME="${PITA_HOME:-$HOME/.local/share/PiTradingAgents}"
@@ -15,13 +16,14 @@ REPORTS_ROOT="$PITA_DATA_DIR/reports"
 MEMORY_DIR="$PITA_DATA_DIR/memory"
 mkdir -p "$REPORTS_ROOT" "$MEMORY_DIR" "$PITA_CONFIG_DIR"
 
-VERBOSE=false
+MODE="text"
 MODEL_OVERRIDE=""  # 空 = 使用 Reflector Agent frontmatter 中的模型
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -v|--verbose)
-            VERBOSE=true
+        --mode)
+            MODE="${2:-}"
+            shift
             shift
             ;;
         -m|--model)
@@ -30,7 +32,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -*)
             echo "未知选项：$1" >&2
-            echo "用法：$0 [-v|--verbose] [-m|--model MODEL] YYYY-MM-DD" >&2
+            echo "用法：$0 [--mode text|stream|json|interactive] [-m|--model MODEL] YYYY-MM-DD" >&2
             exit 1
             ;;
         *)
@@ -41,13 +43,18 @@ done
 
 if [[ $# -lt 1 ]]; then
     echo "错误: 缺少决策日期参数" >&2
-    echo "用法: $0 [-v|--verbose] YYYY-MM-DD" >&2
+    echo "用法: $0 [--mode text|stream|json|interactive] YYYY-MM-DD" >&2
     exit 1
 fi
 
 DECISION_DATE="$1"
 if ! [[ "$DECISION_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
     echo "错误: 日期格式无效，应为 YYYY-MM-DD" >&2
+    exit 1
+fi
+
+if [[ "$MODE" == "interactive" ]]; then
+    echo "[错误] reflect 命令暂不支持 interactive 模式：多角色反思流程无法映射到单一 Pi TUI 会话" >&2
     exit 1
 fi
 
@@ -60,58 +67,16 @@ echo "=============================================="
 echo "PiTradingAgents — 复盘反思 Pipeline"
 echo "决策日期: $DECISION_DATE"
 echo "报告目录: $REPORT_DIR"
-$VERBOSE && echo "模式: verbose"
+echo "模式: $MODE"
 echo "=============================================="
-
-extract_text_from_pi_jsonl() {
-    local jsonl_file="$1"
-    local output_file="$2"
-    python3 - <<PY > "$output_file"
-import json
-text = ''
-for line in open("$jsonl_file", encoding='utf-8'):
-    try:
-        ev = json.loads(line.strip())
-        tp = ev.get('type', '')
-        if tp in ('message_update', 'message_end'):
-            parts = ev.get('message', {}).get('content', [])
-            t = ''.join(p.get('text', '') for p in parts if p.get('type') == 'text')
-            if t:
-                text = t
-    except Exception:
-        pass
-print(text, end='')
-PY
-}
 
 run_reflector() {
     local role="$1"
     local prompt_file="$2"
     local output_file="$3"
-
-    if $VERBOSE; then
-        local tmp_jsonl="$TMP_DIR/.reflect-${role}.jsonl"
-        echo "  正在运行 Reflector Agent ($role, verbose 模式)..."
-        pi --no-session --mode json \
-           --model "$MODEL" \
-           --tools "$TOOLS" \
-           --system-prompt "$SYSTEM_PROMPT" \
-           --skill "$PROJECT_ROOT/skills/ashare-data" \
-           "@$prompt_file" \
-            | tee "$tmp_jsonl" \
-            | pi-watch 2>&1 \
-            | sed "s/^/[Reflector:${role}] /"
-        extract_text_from_pi_jsonl "$tmp_jsonl" "$output_file"
-    else
-        echo "  正在运行 Reflector Agent ($role)..."
-        pi --no-session --print \
-           --model "$MODEL" \
-           --tools "$TOOLS" \
-           --system-prompt "$SYSTEM_PROMPT" \
-           --skill "$PROJECT_ROOT/skills/ashare-data" \
-           "@$prompt_file" \
-            > "$output_file" 2>/dev/null
-    fi
+    echo "  正在运行 Reflector Agent ($role, mode=$MODE)..."
+    export MODEL_OVERRIDE
+    PI_JSON_LOG="$TMP_DIR/.reflect-${role}.jsonl" run_agent_node "$MODE" "Reflector:${role}" "$output_file" "$REFLECTOR_AGENT" "@$prompt_file"
 }
 
 parse_reflection_json() {
@@ -403,17 +368,6 @@ if [[ ! -f "$REFLECTOR_AGENT" ]]; then
     echo "  ✗ Reflector Agent 不存在: $REFLECTOR_AGENT" >&2
     exit 1
 fi
-
-if [[ -n "$MODEL_OVERRIDE" ]]; then
-    MODEL="$MODEL_OVERRIDE"
-else
-    MODEL="$(awk -F': ' '/^model:/{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2; exit}' "$REFLECTOR_AGENT")"
-fi
-TOOLS="$(awk -F': ' '/^tools:/{gsub(/[[:space:]]/, "", $2); print $2; exit}' "$REFLECTOR_AGENT")"
-SYSTEM_PROMPT="$(awk 'BEGIN{n=0} /^---/{n++; next} n>=2{print}' "$REFLECTOR_AGENT")"
-case "$MODEL" in
-    kimi-k2-thinking) MODEL="kimi-coding/kimi-k2-thinking" ;;
-esac
 
 MARKET_SITUATION="$(build_market_situation)"
 REFLECTION_DIR="$REPORT_DIR/reflections"

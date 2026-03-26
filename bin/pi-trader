@@ -19,7 +19,7 @@ import sys
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
 import typer
 from rich.console import Console
@@ -94,10 +94,14 @@ def run(
         Optional[str],
         typer.Option("--model", "-m", help="LLM 模型名称"),
     ] = None,
-    verbose: Annotated[
-        bool,
-        typer.Option("--verbose", "-v", help="实时显示 Agent 推理过程"),
-    ] = False,
+    mode: Annotated[
+        Literal["text", "stream", "json"],
+        typer.Option(
+            "--mode",
+            help="运行模式：text（默认最终文本）/ stream（流式输出）/ json（原始事件流）",
+            case_sensitive=False,
+        ),
+    ] = "text",
 ) -> None:
     """运行分析流程（情绪/题材/趋势分析 → 辩论 → 决策）"""
     console.print(
@@ -109,8 +113,7 @@ def run(
     )
 
     args: list[str] = []
-    if verbose:
-        args.append("-v")
+    args.extend(["--mode", mode])
     if stages:
         args.extend(["-s", stages])
     if model:
@@ -134,10 +137,14 @@ def research(
         Optional[str],
         typer.Option("--model", "-m", help="LLM 模型名称"),
     ] = None,
-    verbose: Annotated[
-        bool,
-        typer.Option("--verbose", "-v", help="实时显示研究过程"),
-    ] = False,
+    mode: Annotated[
+        Literal["text", "stream", "json", "interactive"],
+        typer.Option(
+            "--mode",
+            help="运行模式：text（默认最终文本）/ stream（流式输出）/ json（原始事件流）/ interactive（Pi TUI）",
+            case_sensitive=False,
+        ),
+    ] = "text",
 ) -> None:
     """个股深度研究（5轮分层淘汰）"""
     console.print(
@@ -149,8 +156,7 @@ def research(
     )
 
     args: list[str] = []
-    if verbose:
-        args.append("-v")
+    args.extend(["--mode", mode])
     if model:
         args.extend(["-m", model])
     if stocks:
@@ -172,10 +178,14 @@ def reflect(
         Optional[str],
         typer.Option("--model", "-m", help="LLM 模型名称"),
     ] = None,
-    verbose: Annotated[
-        bool,
-        typer.Option("--verbose", "-v", help="实时显示反思过程"),
-    ] = False,
+    mode: Annotated[
+        Literal["text", "stream", "json"],
+        typer.Option(
+            "--mode",
+            help="运行模式：text（默认最终文本）/ stream（流式输出）/ json（原始事件流）",
+            case_sensitive=False,
+        ),
+    ] = "text",
 ) -> None:
     """复盘反思（对比预测 vs 实际，生成经验写入记忆）"""
     console.print(
@@ -187,8 +197,7 @@ def reflect(
     )
 
     args: list[str] = []
-    if verbose:
-        args.append("-v")
+    args.extend(["--mode", mode])
     if model:
         args.extend(["-m", model])
     args.append(date)

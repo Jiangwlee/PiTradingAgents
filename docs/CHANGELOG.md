@@ -85,7 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Debate-based decision making (bull/bear/judge framework)
 - Self-evolution mechanism with BM25+jieba memory retrieval
 - Data integration with ashare-platform API
-- Chrome CDP support for deep research (optional)
+- web-operator support for deep research (optional)
 
 #### Commands
 - `pita run`: Run analysis pipeline
