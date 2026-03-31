@@ -124,19 +124,27 @@ else
     # 默认模式：从 ashare-platform 获取候选池
     echo "正在获取候选股票数据..."
 
-    CONSECUTIVE_RED=$(bash "$PROJECT_ROOT/scripts/fetch-consecutive-red.sh" "$TRADE_DATE" 7 2>/dev/null || echo "[]")
-    NEW_HIGH=$(bash "$PROJECT_ROOT/scripts/fetch-new-high.sh" "$TRADE_DATE" 2>/dev/null || echo "[]")
+    CONSECUTIVE_RED_RAW=$(bash "$PROJECT_ROOT/scripts/fetch-consecutive-red.sh" "$TRADE_DATE" 5 2>/dev/null || echo "[]")
+    NEW_HIGH_RAW=$(bash "$PROJECT_ROOT/scripts/fetch-new-high.sh" "$TRADE_DATE" 2>/dev/null || echo "[]")
+
+    echo "正在过滤一字板..."
+    CONSECUTIVE_RED=$(echo "$CONSECUTIVE_RED_RAW" | bash "$PROJECT_ROOT/scripts/filter-yiziboard.sh" "$TRADE_DATE")
+    NEW_HIGH=$(echo "$NEW_HIGH_RAW" | bash "$PROJECT_ROOT/scripts/filter-yiziboard.sh" "$TRADE_DATE")
 
     CR_COUNT=$(echo "$CONSECUTIVE_RED" | jq 'length' 2>/dev/null || echo 0)
     NH_COUNT=$(echo "$NEW_HIGH" | jq 'length' 2>/dev/null || echo 0)
-    echo "  7连阳以上: ${CR_COUNT} 只"
-    echo "  历史新高:  ${NH_COUNT} 只"
+    CR_RAW_COUNT=$(echo "$CONSECUTIVE_RED_RAW" | jq 'length' 2>/dev/null || echo 0)
+    NH_RAW_COUNT=$(echo "$NEW_HIGH_RAW" | jq 'length' 2>/dev/null || echo 0)
+    echo "  5连阳以上: ${CR_COUNT} 只（过滤前 ${CR_RAW_COUNT} 只）"
+    echo "  历史新高:  ${NH_COUNT} 只（过滤前 ${NH_RAW_COUNT} 只）"
 
     cat > "$PROMPT_FILE" << EOF
 模式：默认研究
 交易日期：$TRADE_DATE
 
-## 候选池一：7连阳以上股票（consecutive_days >= 7）
+注意：候选池已过滤上一交易日为一字板的股票，不得推荐一字板股票。
+
+## 候选池一：5连阳以上股票（consecutive_days >= 5）
 
 字段说明：code=股票代码, name=名称, consecutive_days=连阳天数, gain_pct=区间涨幅%, bars=逐日涨跌幅
 
