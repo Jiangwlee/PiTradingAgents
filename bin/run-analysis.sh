@@ -632,7 +632,7 @@ run_agent "投资经理" "$REPORT_DIR/07-final-report.md" "$PROJECT_ROOT/agents/
 # 重命名最终报告并生成 PDF
 if [[ -f "$REPORT_DIR/07-final-report.md" ]]; then
     TIMESTAMP=$(date +%H%M%S)
-    FINAL_NAME="A股题材交易决策-${TRADE_DATE}-${TIMESTAMP}"
+    FINAL_NAME="PiTrader复盘-${TRADE_DATE}-${TIMESTAMP}"
     cp "$REPORT_DIR/07-final-report.md" "$REPORT_DIR/${FINAL_NAME}.md"
     echo "最终报告已复制: ${FINAL_NAME}.md"
 
@@ -656,8 +656,8 @@ fi
 
 # 提取荐股数据为结构化 picks.json
 FINAL_REPORT_FILE=""
-if ls "$REPORT_DIR"/A股题材交易决策-*.md &>/dev/null; then
-    FINAL_REPORT_FILE=$(ls -t "$REPORT_DIR"/A股题材交易决策-*.md | head -1)
+if ls "$REPORT_DIR"/PiTrader复盘-*.md &>/dev/null; then
+    FINAL_REPORT_FILE=$(ls -t "$REPORT_DIR"/PiTrader复盘-*.md | head -1)
 else
     FINAL_REPORT_FILE="$REPORT_DIR/07-final-report.md"
 fi

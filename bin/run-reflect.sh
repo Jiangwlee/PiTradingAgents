@@ -197,7 +197,7 @@ build_role_input() {
         trader)
             # 优先查找重命名后的最终报告，回退到旧文件名
             local final_report
-            final_report=$(ls -t "$REPORT_DIR"/A股题材交易决策-*.md 2>/dev/null | head -1)
+            final_report=$(ls -t "$REPORT_DIR"/PiTrader复盘-*.md 2>/dev/null | head -1)
             if [[ -n "$final_report" ]]; then
                 cp "$final_report" "$output_file"
             else
