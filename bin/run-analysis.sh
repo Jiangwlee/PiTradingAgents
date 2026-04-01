@@ -591,6 +591,27 @@ LESSONS_FILE="$TMP_DIR/lessons.md"
     fi
 } > "$LESSONS_FILE"
 
+# 初始化信号库（首次运行时从项目 seed 复制）
+SIGNALS_DIR="$PITA_DATA_DIR/signals"
+mkdir -p "$SIGNALS_DIR"
+if [[ ! -f "$SIGNALS_DIR/library.json" ]]; then
+    if [[ -f "$PROJECT_ROOT/data/signals/library.json" ]]; then
+        cp "$PROJECT_ROOT/data/signals/library.json" "$SIGNALS_DIR/library.json"
+        echo "  ✓ 已初始化信号库: $SIGNALS_DIR/library.json"
+    else
+        echo "  ⚠ 未找到信号库 seed 文件，荐股功能可能受影响"
+    fi
+fi
+
+# 生成今日选股原则 Markdown
+CRITERIA_FILE="$TMP_DIR/selection-criteria.md"
+if [[ -f "$SIGNALS_DIR/library.json" ]]; then
+    bin/update-signals.py --library "$SIGNALS_DIR/library.json" --generate-only > "$CRITERIA_FILE" 2>/dev/null \
+        || echo "（选股原则生成失败）" > "$CRITERIA_FILE"
+else
+    echo "（信号库不存在，无法生成选股原则）" > "$CRITERIA_FILE"
+fi
+
 # 投资经理 prompt 文件（P0-1 修复）
 FINAL_PROMPT="$TMP_DIR/final-prompt.txt"
 {
@@ -599,6 +620,9 @@ FINAL_PROMPT="$TMP_DIR/final-prompt.txt"
     echo ""
     echo "历史记忆:"
     cat "$LESSONS_FILE"
+    echo ""
+    echo "=== 选股原则 ==="
+    cat "$CRITERIA_FILE"
 } > "$FINAL_PROMPT"
 
 run_agent "投资经理" "$REPORT_DIR/07-final-report.md" "$PROJECT_ROOT/agents/decision/investment-manager.md" "@$FINAL_PROMPT" || {
@@ -627,6 +651,22 @@ if [[ -f "$REPORT_DIR/07-final-report.md" ]]; then
             || echo "[警告] 手机版 PDF 生成失败"
     else
         echo "[警告] markdown-to-anything 不可用，跳过 PDF 生成"
+    fi
+fi
+
+# 提取荐股数据为结构化 picks.json
+FINAL_REPORT_FILE=""
+if ls "$REPORT_DIR"/A股题材交易决策-*.md &>/dev/null; then
+    FINAL_REPORT_FILE=$(ls -t "$REPORT_DIR"/A股题材交易决策-*.md | head -1)
+else
+    FINAL_REPORT_FILE="$REPORT_DIR/07-final-report.md"
+fi
+if [[ -f "$FINAL_REPORT_FILE" ]]; then
+    if bin/extract-picks.py "$FINAL_REPORT_FILE" > "$REPORT_DIR/picks.json" 2>/dev/null; then
+        PICKS_COUNT=$(python3 -c "import json; d=json.load(open('$REPORT_DIR/picks.json')); print(len(d.get('picks',[])))" 2>/dev/null || echo "?")
+        echo "荐股已提取: $REPORT_DIR/picks.json（${PICKS_COUNT} 只）"
+    else
+        echo "[警告] 荐股数据提取失败"
     fi
 fi
 

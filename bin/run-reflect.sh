@@ -463,6 +463,83 @@ else
 fi
 
 echo ""
+echo "=== 步骤 7: 更新信号库评分和条件轮换 ==="
+
+SIGNALS_DIR="$PITA_DATA_DIR/signals"
+LIBRARY_FILE="$SIGNALS_DIR/library.json"
+
+# 初始化信号库（首次运行）
+mkdir -p "$SIGNALS_DIR"
+if [[ ! -f "$LIBRARY_FILE" ]]; then
+    if [[ -f "$PROJECT_ROOT/data/signals/library.json" ]]; then
+        cp "$PROJECT_ROOT/data/signals/library.json" "$LIBRARY_FILE"
+        echo "  ✓ 已初始化信号库"
+    else
+        echo "  ⚠ 未找到信号库 seed 文件，跳过信号更新"
+        LIBRARY_FILE=""
+    fi
+fi
+
+if [[ -n "$LIBRARY_FILE" && -f "$LIBRARY_FILE" ]]; then
+    # 从 trader 反思中提取信号评分和新信号
+    TRADER_REFLECTION="$REFLECTION_DIR/trader.json"
+    SCORE_UPDATES_FILE="$REPORT_DIR/score-updates.json"
+
+    python3 - <<PY > "$SCORE_UPDATES_FILE" 2>/dev/null || echo '{"positive":{},"avoid":{},"new_signals":[]}' > "$SCORE_UPDATES_FILE"
+import json
+from pathlib import Path
+
+trader_path = Path("$TRADER_REFLECTION")
+if not trader_path.exists():
+    print('{"positive":{},"avoid":{},"new_signals":[]}')
+    exit()
+
+data = json.loads(trader_path.read_text(encoding='utf-8'))
+result = {
+    "positive": data.get("signal_scores", {}).get("positive", {}),
+    "avoid":    data.get("signal_scores", {}).get("avoid", {}),
+    "new_signals": data.get("new_signals", []),
+}
+print(json.dumps(result, ensure_ascii=False, indent=2))
+PY
+
+    # 获取 picks.json 路径
+    PICKS_FILE="$REPORT_DIR/picks.json"
+
+    # 计算评估日期（next trading day of DECISION_DATE）
+    EVAL_DATE_FOR_SIGNALS=$(python3 - <<PY
+from datetime import datetime, timedelta
+d = datetime.strptime("$DECISION_DATE", "%Y-%m-%d") + timedelta(days=1)
+while d.weekday() >= 5:
+    d += timedelta(days=1)
+print(d.strftime("%Y-%m-%d"))
+PY
+)
+
+    UPDATE_SUMMARY_FILE="$REPORT_DIR/signal-update-summary.json"
+    UPDATE_ARGS=(
+        --library "$LIBRARY_FILE"
+        --signal-scores "$SCORE_UPDATES_FILE"
+        --decision-date "$DECISION_DATE"
+        --eval-date "$EVAL_DATE_FOR_SIGNALS"
+        --api-url "$API_URL"
+    )
+    if [[ -f "$PICKS_FILE" ]]; then
+        UPDATE_ARGS+=(--picks "$PICKS_FILE")
+    fi
+
+    if "$PROJECT_ROOT/bin/update-signals.py" "${UPDATE_ARGS[@]}" > "$UPDATE_SUMMARY_FILE" 2>/dev/null; then
+        ROTATIONS=$(python3 -c "import json; d=json.load(open('$UPDATE_SUMMARY_FILE')); print(len(d.get('rotations',[])))" 2>/dev/null || echo "?")
+        NEW_SIGS=$(python3 -c "import json; d=json.load(open('$UPDATE_SUMMARY_FILE')); print(len(d.get('new_signals',[])))" 2>/dev/null || echo "?")
+        echo "  ✓ 信号库已更新: 轮换=${ROTATIONS}条，新信号=${NEW_SIGS}条"
+    else
+        echo "  ⚠ 信号库更新失败，但不影响记忆存储"
+    fi
+else
+    echo "  ⚠ 信号库不存在，跳过更新"
+fi
+
+echo ""
 echo "=============================================="
 echo "复盘反思 Pipeline 执行完成！"
 echo "=============================================="
@@ -473,3 +550,5 @@ echo "  实际数据:    $ACTUAL_DATA_FILE"
 echo "  汇总反思:    $REFLECTION_OUTPUT"
 echo "  角色反思:    $REFLECTION_DIR/{bull,bear,judge,trader}.json"
 echo "  记忆存储:    $MEMORY_DIR/{bull,bear,judge,trader}.jsonl"
+echo "  信号库:      $LIBRARY_FILE"
+[[ -f "${UPDATE_SUMMARY_FILE:-}" ]] && echo "  更新摘要:    $UPDATE_SUMMARY_FILE"

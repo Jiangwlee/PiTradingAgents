@@ -124,7 +124,7 @@ else
     # 默认模式：从 ashare-platform 获取候选池
     echo "正在获取候选股票数据..."
 
-    CONSECUTIVE_RED_RAW=$(bash "$PROJECT_ROOT/scripts/fetch-consecutive-red.sh" "$TRADE_DATE" 5 2>/dev/null || echo "[]")
+    CONSECUTIVE_RED_RAW=$(bash "$PROJECT_ROOT/scripts/fetch-consecutive-red.sh" "$TRADE_DATE" 5 5 2>/dev/null || echo "[]")
     NEW_HIGH_RAW=$(bash "$PROJECT_ROOT/scripts/fetch-new-high.sh" "$TRADE_DATE" 2>/dev/null || echo "[]")
 
     echo "正在过滤一字板..."
@@ -144,9 +144,9 @@ else
 
 注意：候选池已过滤上一交易日为一字板的股票，不得推荐一字板股票。
 
-## 候选池一：5连阳以上股票（consecutive_days >= 5）
+## 候选池一：5天5阳股票（window_days=5, red_count=5）
 
-字段说明：code=股票代码, name=名称, consecutive_days=连阳天数, gain_pct=区间涨幅%, bars=逐日涨跌幅
+字段说明：code=股票代码, name=名称, window_days=窗口天数, red_count=实际阳线数, gain_pct=区间涨幅%, bars=逐日涨跌幅
 
 $CONSECUTIVE_RED
 

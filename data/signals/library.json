@@ -1,0 +1,43 @@
+{
+  "version": "1.0",
+  "last_update": {
+    "date": null,
+    "score_changes": [],
+    "rotations": [],
+    "new_signals": []
+  },
+  "positive": [
+    {"id": "p001", "condition": "5天5阳", "description": "过去5个交易日全部收阳线，确认持续上涨动能", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "p002", "condition": "题材发酵/主升期", "description": "所属题材情绪处于发酵或主升阶段，题材动能强劲", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "p003", "condition": "大盘情绪启动/主升", "description": "当日整体市场情绪处于启动或主升阶段，系统性风险低", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "p004", "condition": "板块近5日领涨", "description": "所属板块近5日涨幅居市场前列，龙头效应明显", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "p005", "condition": "突破历史新高", "description": "股价突破前期高点或创近一年新高，上方压力小", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "p006", "condition": "缩量回调后量能回升", "description": "前日缩量回调洗盘，今日量能明显回升，洗盘结束形态", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "p007", "condition": "催化剂叙事仍在演化", "description": "有明确政策/事件催化剂支撑，市场叙事逻辑仍在深化中", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "p008", "condition": "龙头股同日走强共振", "description": "题材龙头股当日同步走强，板块资金共振明显", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "p009", "condition": "连板回调后强势再攻", "description": "连板龙头经历缩量回调后重新发起攻势，确认龙头地位", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "p010", "condition": "股价处于近一年低位区间", "description": "股价在近一年价格分布中处于低位区间，安全边际高", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "p011", "condition": "晋级率连续两日上升", "description": "连板晋级率（二进三）连续两日上升，情绪持续升温信号", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "p012", "condition": "封板率超过70%", "description": "当日涨停封板率高于70%，资金做多意愿强烈", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "p013", "condition": "7天6阳以上", "description": "过去7个交易日有6天或以上收阳，中期上涨趋势确立", "score": 5.0, "active": false, "added_date": "2026-04-01"},
+    {"id": "p014", "condition": "题材首板次日高开高走", "description": "题材首次涨停板后次日高开高走，首板买点验证确认", "score": 5.0, "active": false, "added_date": "2026-04-01"},
+    {"id": "p015", "condition": "成交量连续3日放大", "description": "成交量连续三个交易日持续放大，资金持续流入信号", "score": 5.0, "active": false, "added_date": "2026-04-01"}
+  ],
+  "avoid": [
+    {"id": "a001", "condition": "高位第3板以上追涨", "description": "股票已连续涨停3板及以上，累计涨幅超过30%，高度过高", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "a002", "condition": "情绪退潮或高潮末期", "description": "市场整体情绪处于高潮末期或退潮阶段，系统性风险高", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "a003", "condition": "炸板率超过40%", "description": "当日市场炸板率高于40%，市场做多意愿极弱，涨停不可信", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "a004", "condition": "前一日一字涨停板", "description": "前一交易日为一字涨停板，流动性极差，无低吸机会", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "a005", "condition": "跌停家数超过15家", "description": "当日市场跌停家数超15家，系统性风险信号明显", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "a006", "condition": "题材处于高潮/退潮阶段", "description": "所属题材情绪处于高潮或退潮阶段，行情顶部风险高", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "a007", "condition": "题材龙头当日炸板", "description": "题材核心龙头股当日发生炸板，龙头信号破坏，题材转弱", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "a008", "condition": "大盘当日下跌超1.5%", "description": "大盘指数当日下跌超过1.5%，系统性压力强，操作风险高", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "a009", "condition": "近3日换手率超30%", "description": "该股近三日换手率超过30%，短期严重过热，主力出货风险大", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "a010", "condition": "股价处于近一年高位区间", "description": "股价在近一年价格分布中处于高位区间，追高安全边际低", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "a011", "condition": "无实质催化纯跟风拉升", "description": "无明确基本面或政策催化剂支撑，纯属跟风炒作，持续性差", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "a012", "condition": "晋级率单日大幅下降", "description": "连板晋级率当日大幅下降（超过15个百分点），情绪快速衰减", "score": 5.0, "active": true, "added_date": "2026-04-01"},
+    {"id": "a013", "condition": "公司发布风险提示公告", "description": "公司近期发布异常波动风险提示或重大不确定性公告", "score": 5.0, "active": false, "added_date": "2026-04-01"},
+    {"id": "a014", "condition": "情绪冰点期抄底", "description": "市场情绪处于冰点期时抄底，需等右侧确认信号再入场", "score": 5.0, "active": false, "added_date": "2026-04-01"},
+    {"id": "a015", "condition": "该股有近期断板历史", "description": "该股在近3周内有在高位断板的历史记录，信心受损风险高", "score": 5.0, "active": false, "added_date": "2026-04-01"}
+  ]
+}

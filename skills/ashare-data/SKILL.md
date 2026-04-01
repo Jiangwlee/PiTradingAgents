@@ -66,7 +66,7 @@ pi-trader data emotion 2026-03-21
 
 | Command | Function | Usage |
 |---------|----------|-------|
-| `consecutive-red` | Consecutive up stocks | `pi-trader data consecutive-red <trade_date> [min_days]` |
+| `consecutive-red` | Consecutive up stocks | `pi-trader data consecutive-red <trade_date> [days] [min_red]` |
 | `new-high` | Historical new high stocks | `pi-trader data new-high <trade_date>` |
 
 ## Parameters
@@ -98,8 +98,10 @@ pi-trader data emotion 2026-03-21
 - `code`: stock code
 - `name`: stock name
 - `sc`: full code with exchange prefix (e.g. `SH600396`)
-- `consecutive_days`: number of consecutive up days
-- `gain_pct`: total gain percentage over the consecutive period
+- `window_days`: window size (5 or 7)
+- `red_count`: actual number of up days within the window
+- `min_red`: min_red filter value used in this query (may be absent if not filtered)
+- `gain_pct`: total gain percentage over the window period
 - `bars`: daily bar array, each with `date` and `change_pct`
 
 ### new-high fields
