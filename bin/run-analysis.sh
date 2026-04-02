@@ -35,7 +35,11 @@ JUDGE_MEMORY=""
 # 解析命令行参数
 MODE="text"
 STAGES=""        # 空 = 全部阶段；否则逗号分隔，如 "2,3"
-MODEL_OVERRIDE="" # 空 = 使用 Agent frontmatter 中的模型
+MODEL_OVERRIDE=""        # 空 = 使用 Agent frontmatter 中的模型
+# 阶段 3 精细化模型（通过环境变量配置，优先级高于 MODEL_OVERRIDE）
+# PITA_MODEL_STAGE3_BULL   — 看多辩手
+# PITA_MODEL_STAGE3_BEAR   — 看空辩手
+# PITA_MODEL_STAGE3_JUDGE  — 题材裁判
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --mode)
@@ -87,7 +91,7 @@ resolve_trade_date() {
     today=$(date +%Y-%m-%d)
     now_hhmm=$(date +%H%M)
 
-    if [[ "$latest" == "$today" && "$now_hhmm" -lt "1530" ]]; then
+    if [[ "$latest" == "$today" && "$now_hhmm" < "1530" ]]; then
         # 今天是交易日但 15:30 前数据未采集完成，使用前一交易日
         echo "$prev"
     else
@@ -438,8 +442,13 @@ fi
 
 if should_run_stage 3; then
 
+_STAGE3_MODEL_SAVED="$MODEL_OVERRIDE"
+
 echo ""
 echo "=== 阶段 3: 题材辩论（顺序执行） ==="
+[[ -n "${PITA_MODEL_STAGE3_BULL:-}"  ]] && echo "模型(看多辩手):  $PITA_MODEL_STAGE3_BULL"
+[[ -n "${PITA_MODEL_STAGE3_BEAR:-}"  ]] && echo "模型(看空辩手):  $PITA_MODEL_STAGE3_BEAR"
+[[ -n "${PITA_MODEL_STAGE3_JUDGE:-}" ]] && echo "模型(题材裁判):  $PITA_MODEL_STAGE3_JUDGE"
 
 # 题材辩论计数器
 THEME_IDX=0
@@ -472,8 +481,9 @@ while IFS= read -r theme <&3; do
         cat "$REPORT_DIR/05-market-debate.md" 2>/dev/null || echo "无"
     } > "$THEME_BULL_PROMPT"
     
+    MODEL_OVERRIDE="${PITA_MODEL_STAGE3_BULL:-$_STAGE3_MODEL_SAVED}"
     run_agent "题材${THEME_IDX}看多" "$REPORT_DIR/06a-bull-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" "@$THEME_BULL_PROMPT" || echo "  [警告] 题材 $theme 看多辩手执行失败"
-    
+
     # 题材看空辩论（P0-1 修复：使用临时 prompt 文件）
     echo "  ├─ 看空辩手..."
     THEME_BEAR_PROMPT="$TMP_DIR/theme-${THEME_IDX}-bear-prompt.txt"
@@ -497,6 +507,7 @@ while IFS= read -r theme <&3; do
         cat "$REPORT_DIR/06a-bull-${THEME_IDX}.md" 2>/dev/null || echo "无"
     } > "$THEME_BEAR_PROMPT"
     
+    MODEL_OVERRIDE="${PITA_MODEL_STAGE3_BEAR:-$_STAGE3_MODEL_SAVED}"
     run_agent "题材${THEME_IDX}看空" "$REPORT_DIR/06b-bear-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" "@$THEME_BEAR_PROMPT" || echo "  [警告] 题材 $theme 看空辩手执行失败"
 done 3<<< "$TOP_THEMES"
 
@@ -550,11 +561,13 @@ else
         cat "$REPORTS_CTX"
     } > "$THEME_JUDGE_PROMPT"
     
+    MODEL_OVERRIDE="${PITA_MODEL_STAGE3_JUDGE:-$_STAGE3_MODEL_SAVED}"
     run_agent "题材裁判" "$REPORT_DIR/06-theme-debate.md" "$PROJECT_ROOT/agents/judges/theme-judge.md" "@$THEME_JUDGE_PROMPT" || {
         echo "[警告] 题材裁判执行失败"
     }
 fi
 
+MODEL_OVERRIDE="$_STAGE3_MODEL_SAVED"
 echo "阶段 3 完成"
 
 fi  # end should_run_stage 3
@@ -565,7 +578,11 @@ if should_run_stage 4; then
 
 echo ""
 echo "=== 阶段 4: 最终决策 ==="
+[[ -n "${PITA_MODEL_TRADER:-}" ]] && echo "模型(投资经理): $PITA_MODEL_TRADER"
 echo "[决策] 投资经理生成最终报告..."
+
+_STAGE4_MODEL_SAVED="$MODEL_OVERRIDE"
+MODEL_OVERRIDE="${PITA_MODEL_TRADER:-$MODEL_OVERRIDE}"
 
 # 构建所有报告上下文（P0-1 修复：使用临时文件）
 ALL_REPORTS_CTX="$TMP_DIR/all-reports-context.txt"
@@ -628,6 +645,7 @@ FINAL_PROMPT="$TMP_DIR/final-prompt.txt"
 run_agent "投资经理" "$REPORT_DIR/07-final-report.md" "$PROJECT_ROOT/agents/decision/investment-manager.md" "@$FINAL_PROMPT" || {
     echo "[警告] 投资经理执行失败"
 }
+MODEL_OVERRIDE="$_STAGE4_MODEL_SAVED"
 
 # 重命名最终报告并生成 PDF
 if [[ -f "$REPORT_DIR/07-final-report.md" ]]; then

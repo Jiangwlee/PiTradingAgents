@@ -8,10 +8,19 @@
 # Commands:
 #   run       [DATE]                   运行分析流程
 #   research  [--stocks CODE,CODE]     个股深度研究
-#   reflect   DATE                     复盘反思（自进化）
+#   reflect   [DATE]                   复盘反思（自进化），DATE 为复盘日，默认自动确定
 #   inject    EXPERIENCE               注入交易经验
 #   data      SUBCOMMAND [ARGS...]     市场数据查询
 #   doctor                             系统诊断
+#
+# 环境变量（在 config.env 中配置）:
+#   PITA_DEFAULT_MODEL=qwen3.5-35b       run/reflect 全局默认模型
+#   PITA_DEFAULT_MODE=stream             run/reflect 全局默认输出模式
+#   PITA_MODEL_STAGE3_BULL=xxx           run 阶段3 看多辩手专用模型
+#   PITA_MODEL_STAGE3_BEAR=xxx           run 阶段3 看空辩手专用模型
+#   PITA_MODEL_STAGE3_JUDGE=xxx          run 阶段3 题材裁判专用模型
+#   PITA_MODEL_TRADER=xxx                run 阶段4 投资经理专用模型
+#   PITA_MODEL_REFLECT=xxx               reflect 专用模型
 
 import os
 import shutil
@@ -36,7 +45,38 @@ DATA_HOME = Path(
 CONFIG_HOME = Path(
     os.environ.get("PITA_CONFIG_DIR", Path.home() / ".config/PiTradingAgents")
 )
+
+# 自动加载 config.env（不覆盖已有环境变量）
+def _load_env_file() -> None:
+    for candidate in [DATA_HOME / "config" / "config.env", CONFIG_HOME / "config.env"]:
+        if candidate.exists():
+            with open(candidate) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    key, _, val = line.partition("=")
+                    key = key.strip()
+                    val = val.strip()
+                    # 正确解析带引号的值（忽略引号外的行内注释）
+                    if val.startswith('"'):
+                        end = val.find('"', 1)
+                        val = val[1:end] if end != -1 else val[1:]
+                    elif val.startswith("'"):
+                        end = val.find("'", 1)
+                        val = val[1:end] if end != -1 else val[1:]
+                    else:
+                        val = val.split("#")[0].strip()
+                    if key and key not in os.environ:
+                        os.environ[key] = val
+            break
+
+_load_env_file()
+
 ASHARE_API_URL = os.environ.get("ASHARE_API_URL", "http://127.0.0.1:8000")
+DEFAULT_MODEL = os.environ.get("PITA_DEFAULT_MODEL")
+DEFAULT_MODE = os.environ.get("PITA_DEFAULT_MODE")
+MODEL_REFLECT = os.environ.get("PITA_MODEL_REFLECT")
 
 console = Console()
 app = typer.Typer(
@@ -93,18 +133,21 @@ def run(
     ] = None,
     model: Annotated[
         Optional[str],
-        typer.Option("--model", "-m", help="LLM 模型名称"),
+        typer.Option("--model", "-m", help="全局模型（或设置 PITA_DEFAULT_MODEL）"),
     ] = None,
     mode: Annotated[
-        Literal["text", "stream", "json"],
+        Optional[Literal["text", "stream", "json"]],
         typer.Option(
             "--mode",
-            help="运行模式：text（默认最终文本）/ stream（流式输出）/ json（原始事件流）",
+            help="输出模式：text / stream / json（或设置 PITA_DEFAULT_MODE，缺省 text）",
             case_sensitive=False,
         ),
-    ] = "text",
+    ] = None,
 ) -> None:
     """运行分析流程（情绪/题材/趋势分析 → 辩论 → 决策）"""
+    effective_model = model or DEFAULT_MODEL
+    effective_mode = mode or DEFAULT_MODE or "text"
+
     console.print(
         Panel.fit(
             "PiTrader — A 股题材交易分析",
@@ -113,12 +156,11 @@ def run(
         )
     )
 
-    args: list[str] = []
-    args.extend(["--mode", mode])
+    args: list[str] = ["--mode", effective_mode]
     if stages:
         args.extend(["-s", stages])
-    if model:
-        args.extend(["-m", model])
+    if effective_model:
+        args.extend(["-m", effective_model])
     if date:
         args.append(date)
 
@@ -172,36 +214,42 @@ def research(
 @app.command()
 def reflect(
     date: Annotated[
-        str,
-        typer.Argument(help="决策日期 (YYYY-MM-DD)", metavar="DATE"),
-    ],
+        Optional[str],
+        typer.Argument(
+            help="复盘日期 (YYYY-MM-DD)。16:00 后默认今天，之前默认前一交易日。",
+            metavar="DATE",
+        ),
+    ] = None,
     model: Annotated[
         Optional[str],
-        typer.Option("--model", "-m", help="LLM 模型名称"),
+        typer.Option("--model", "-m", help="模型名称（或设置 PITA_MODEL_REFLECT / PITA_DEFAULT_MODEL）"),
     ] = None,
     mode: Annotated[
-        Literal["text", "stream", "json"],
+        Optional[Literal["text", "stream", "json"]],
         typer.Option(
             "--mode",
-            help="运行模式：text（默认最终文本）/ stream（流式输出）/ json（原始事件流）",
+            help="输出模式：text / stream / json（或设置 PITA_DEFAULT_MODE，缺省 text）",
             case_sensitive=False,
         ),
-    ] = "text",
+    ] = None,
 ) -> None:
     """复盘反思（对比预测 vs 实际，生成经验写入记忆）"""
+    effective_model = model or MODEL_REFLECT or DEFAULT_MODEL
+    effective_mode = mode or DEFAULT_MODE or "text"
+
     console.print(
         Panel.fit(
             "PiTrader — 复盘反思与自进化",
-            subtitle=f"决策日期：{date}",
+            subtitle=f"复盘日期：{date or '自动确定（16:00 前用前交易日，之后用今日）'}",
             border_style="cyan",
         )
     )
 
-    args: list[str] = []
-    args.extend(["--mode", mode])
-    if model:
-        args.extend(["-m", model])
-    args.append(date)
+    args: list[str] = ["--mode", effective_mode]
+    if effective_model:
+        args.extend(["-m", effective_model])
+    if date:
+        args.append(date)
 
     _run_script(APP_ROOT / "bin/run-reflect.sh", args, "复盘流程")
 

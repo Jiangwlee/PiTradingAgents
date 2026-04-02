@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # run-reflect.sh — 复盘编排脚本
-# 用法: run-reflect.sh [--mode text|stream|json] [-m MODEL] YYYY-MM-DD
+# 用法: run-reflect.sh [--mode text|stream|json] [-m MODEL] [YYYY-MM-DD]
+#
+# DATE 为复盘日（即"今天"）。脚本自动将前一个交易日作为 DECISION_DATE，
+# 复盘日本身作为 EVAL_DATE（评估日）。
+# 省略 DATE 时：16:00 后默认今天，之前默认前一交易日。
 
 set -euo pipefail
 
@@ -32,7 +36,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -*)
             echo "未知选项：$1" >&2
-            echo "用法：$0 [--mode text|stream|json|interactive] [-m|--model MODEL] YYYY-MM-DD" >&2
+            echo "用法：$0 [--mode text|stream|json] [-m|--model MODEL] [YYYY-MM-DD]" >&2
             exit 1
             ;;
         *)
@@ -41,17 +45,68 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ $# -lt 1 ]]; then
-    echo "错误: 缺少决策日期参数" >&2
-    echo "用法: $0 [--mode text|stream|json|interactive] YYYY-MM-DD" >&2
-    exit 1
+# ── 解析复盘日期 ──────────────────────────────────────────────────────────────
+# REFLECT_DATE: 用户传入的复盘日（即"今天"），省略时自动确定
+# DECISION_DATE: 前一个交易日（通过 API 推算），对应 run 生成的报告目录
+# EVAL_DATE: 评估日 = REFLECT_DATE（用于拉取实际市场数据）
+
+# 通过 API 查询最近交易日列表（最多 10 天），带降级回退
+_get_recent_trade_dates() {
+    local n="${1:-10}"
+    curl -sf --connect-timeout 3 --max-time 5 "$API_URL/trade-dates/recent?days=$n" 2>/dev/null \
+        || echo '{"trade_dates":[]}'
+}
+
+# 给定参考日期，返回其前一个交易日
+_prev_trading_day() {
+    local ref="$1"
+    python3 - "$ref" <<PY
+import sys, json, urllib.request
+ref = sys.argv[1]
+try:
+    url = "${API_URL}/trade-dates/recent?days=10"
+    with urllib.request.urlopen(url, timeout=5) as r:
+        dates = json.loads(r.read())["trade_dates"]
+    prev = [d for d in dates if d < ref]
+    if prev:
+        print(prev[-1]); sys.exit(0)
+except Exception:
+    pass
+from datetime import datetime, timedelta
+d = datetime.strptime(ref, "%Y-%m-%d") - timedelta(days=1)
+while d.weekday() >= 5:
+    d -= timedelta(days=1)
+print(d.strftime("%Y-%m-%d"))
+PY
+}
+
+# 自动确定复盘日：16:00 后用今天（若今天是交易日），否则用前一个交易日
+_resolve_reflect_date() {
+    local today now_hhmm latest_trade
+    today=$(date +%Y-%m-%d)
+    now_hhmm=$(date +%H%M)
+    latest_trade=$(_get_recent_trade_dates 3 | python3 -c \
+        "import json,sys; d=json.load(sys.stdin); print(d.get('trade_dates',[''])[-1])" 2>/dev/null || echo "")
+
+    if [[ "$latest_trade" == "$today" && "$now_hhmm" > "1559" ]]; then
+        echo "$today"
+    else
+        _prev_trading_day "$today"
+    fi
+}
+
+if [[ $# -ge 1 ]]; then
+    REFLECT_DATE="$1"
+    if ! [[ "$REFLECT_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+        echo "错误: 日期格式无效，应为 YYYY-MM-DD" >&2
+        exit 1
+    fi
+else
+    REFLECT_DATE=$(_resolve_reflect_date)
 fi
 
-DECISION_DATE="$1"
-if ! [[ "$DECISION_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
-    echo "错误: 日期格式无效，应为 YYYY-MM-DD" >&2
-    exit 1
-fi
+DECISION_DATE=$(_prev_trading_day "$REFLECT_DATE")
+EVAL_DATE="$REFLECT_DATE"
 
 if [[ "$MODE" == "interactive" ]]; then
     echo "[错误] reflect 命令暂不支持 interactive 模式：多角色反思流程无法映射到单一 Pi TUI 会话" >&2
@@ -65,7 +120,9 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 echo "=============================================="
 echo "PiTradingAgents — 复盘反思 Pipeline"
-echo "决策日期: $DECISION_DATE"
+echo "复盘日期: $REFLECT_DATE"
+echo "决策日期: $DECISION_DATE  (前一交易日)"
+echo "评估日期: $EVAL_DATE"
 echo "报告目录: $REPORT_DIR"
 echo "模式: $MODE"
 echo "=============================================="
@@ -197,7 +254,7 @@ build_role_input() {
         trader)
             # 优先查找重命名后的最终报告，回退到旧文件名
             local final_report
-            final_report=$(ls -t "$REPORT_DIR"/PiTrader复盘-*.md 2>/dev/null | head -1)
+            final_report=$(ls -t "$REPORT_DIR"/PiTrader复盘-*.md 2>/dev/null | head -1 || true)
             if [[ -n "$final_report" ]]; then
                 cp "$final_report" "$output_file"
             else
@@ -271,20 +328,10 @@ else
 fi
 
 echo ""
-echo "=== 步骤 2: 计算评估日期 ==="
-
-EVAL_DATE=$(python3 - <<PY
-from datetime import datetime, timedelta
-decision_date = datetime.strptime("$DECISION_DATE", "%Y-%m-%d")
-next_date = decision_date + timedelta(days=1)
-while next_date.weekday() >= 5:
-    next_date += timedelta(days=1)
-print(next_date.strftime("%Y-%m-%d"))
-PY
-)
+echo "=== 步骤 2: 确认日期链 ==="
 
 echo "  决策日期: $DECISION_DATE"
-echo "  评估日期: $EVAL_DATE (下一个交易日)"
+echo "  评估日期: $EVAL_DATE"
 
 echo ""
 echo "=== 步骤 3: 计算结果信号 ==="
@@ -381,7 +428,7 @@ for role in bull bear judge trader; do
     ROLE_CONTEXT_FILE="$TMP_DIR/${role}-context.txt"
     ROLE_INPUT_FILE="$TMP_DIR/${role}-input.md"
     VALIDATION_FILE="$TMP_DIR/${role}-validation.json"
-    PROMPT_FILE="$TMP_DIR/${role}-reflect-prompt.txt"
+    PROMPT_FILE="$REFLECTION_DIR/${role}-prompt.txt"
     OUTPUT_FILE="$REFLECTION_DIR/${role}.json"
 
     build_role_context "$role" > "$ROLE_CONTEXT_FILE"
@@ -506,22 +553,12 @@ PY
     # 获取 picks.json 路径
     PICKS_FILE="$REPORT_DIR/picks.json"
 
-    # 计算评估日期（next trading day of DECISION_DATE）
-    EVAL_DATE_FOR_SIGNALS=$(python3 - <<PY
-from datetime import datetime, timedelta
-d = datetime.strptime("$DECISION_DATE", "%Y-%m-%d") + timedelta(days=1)
-while d.weekday() >= 5:
-    d += timedelta(days=1)
-print(d.strftime("%Y-%m-%d"))
-PY
-)
-
     UPDATE_SUMMARY_FILE="$REPORT_DIR/signal-update-summary.json"
     UPDATE_ARGS=(
         --library "$LIBRARY_FILE"
         --signal-scores "$SCORE_UPDATES_FILE"
         --decision-date "$DECISION_DATE"
-        --eval-date "$EVAL_DATE_FOR_SIGNALS"
+        --eval-date "$EVAL_DATE"
         --api-url "$API_URL"
     )
     if [[ -f "$PICKS_FILE" ]]; then
@@ -548,7 +585,8 @@ echo "输出文件:"
 echo "  信号报告:    $SIGNALS_FILE"
 echo "  实际数据:    $ACTUAL_DATA_FILE"
 echo "  汇总反思:    $REFLECTION_OUTPUT"
-echo "  角色反思:    $REFLECTION_DIR/{bull,bear,judge,trader}.json"
+echo "  角色反思:    $REFLECTION_DIR/{bull,bear,judge,trader}.json
+  反思提示词:  $REFLECTION_DIR/{bull,bear,judge,trader}-prompt.txt"
 echo "  记忆存储:    $MEMORY_DIR/{bull,bear,judge,trader}.jsonl"
 echo "  信号库:      $LIBRARY_FILE"
 [[ -f "${UPDATE_SUMMARY_FILE:-}" ]] && echo "  更新摘要:    $UPDATE_SUMMARY_FILE"

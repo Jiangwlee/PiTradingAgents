@@ -132,6 +132,13 @@ PITA_APP_DIR="$INSTALL_DIR"
 PITA_DATA_DIR="$DATA_DIR"
 PITA_CONFIG_DIR="$CONFIG_DIR"
 ASHARE_API_URL="http://127.0.0.1:8000"
+# PITA_DEFAULT_MODEL="qwen3.5-35b"             # run/reflect 全局默认模型
+# PITA_DEFAULT_MODE="stream"                    # run/reflect 全局默认输出模式
+# PITA_MODEL_STAGE3_BULL="kimi-k2-thinking"    # run 阶段3 看多辩手专用模型
+# PITA_MODEL_STAGE3_BEAR="kimi-k2-thinking"    # run 阶段3 看空辩手专用模型
+# PITA_MODEL_STAGE3_JUDGE="kimi-k2-thinking"   # run 阶段3 题材裁判专用模型
+# PITA_MODEL_TRADER="kimi-k2-thinking"         # run 阶段4 投资经理专用模型
+# PITA_MODEL_REFLECT="kimi-k2-thinking"         # reflect（反思）专用模型
 EOF
     
     success "数据目录已初始化"

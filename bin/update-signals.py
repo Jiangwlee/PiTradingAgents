@@ -138,7 +138,7 @@ def generate_criteria_markdown(library: dict) -> str:
         if new_sigs:
             lines.append("**新发现信号**:")
             for ns in new_sigs:
-                lines.append(f"- [{ns['type']}] {ns['id']} "{ns['condition']}"（初始得分5.0，加入备用库）")
+                lines.append(f"- [{ns['type']}] {ns['id']} 「{ns['condition']}」（初始得分5.0，加入备用库）")
             lines.append("")
         else:
             lines.append("**新发现信号**: 无\n")
