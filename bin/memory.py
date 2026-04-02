@@ -126,7 +126,7 @@ class PersistentMemory:
         return ' '.join(sections)
 
     def store(self, date: str, situation: str, recommendation: str, extra: Optional[Dict[str, Any]] = None) -> None:
-        """存储单条记忆到内存和磁盘。
+        """存储单条记忆到内存和磁盘（同一日期自动覆盖旧记录）。
 
         Args:
             date: 日期字符串 (YYYY-MM-DD)
@@ -148,16 +148,29 @@ class PersistentMemory:
         search_text = self._build_search_text(record) or situation
         legacy_recommendation = self._build_legacy_recommendation(record) or recommendation
 
-        # 追加到 JSONL
-        with open(self.jsonl_path, 'a', encoding='utf-8') as f:
-            f.write(json.dumps(record, ensure_ascii=False) + '\n')
+        # 查找是否已有同一日期的记录
+        existing_idx = next((i for i, d in enumerate(self.dates) if d == date), None)
 
-        # 更新内存
-        self.records.append(record)
-        self.dates.append(date)
-        self.documents.append(search_text)
-        self.recommendations.append(legacy_recommendation)
-        self.timestamps.append(ts)
+        if existing_idx is not None:
+            # 覆盖内存中的旧记录
+            self.records[existing_idx] = record
+            self.dates[existing_idx] = date
+            self.documents[existing_idx] = search_text
+            self.recommendations[existing_idx] = legacy_recommendation
+            self.timestamps[existing_idx] = ts
+            # 重写整个 JSONL 文件
+            with open(self.jsonl_path, 'w', encoding='utf-8') as f:
+                for r in self.records:
+                    f.write(json.dumps(r, ensure_ascii=False) + '\n')
+        else:
+            # 追加新记录
+            with open(self.jsonl_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(record, ensure_ascii=False) + '\n')
+            self.records.append(record)
+            self.dates.append(date)
+            self.documents.append(search_text)
+            self.recommendations.append(legacy_recommendation)
+            self.timestamps.append(ts)
 
         # 重建索引
         self._rebuild_index()

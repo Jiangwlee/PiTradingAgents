@@ -435,7 +435,18 @@ for role in bull bear judge trader; do
     build_role_input "$role" "$ROLE_INPUT_FILE"
     build_validation_input "$role" "$VALIDATION_FILE"
 
+    # 提取 reflector.md 的 system prompt（跳过 frontmatter）
+    SYSTEM_PROMPT=$(awk '/^---$/{n++; if(n==2){found=1; next}} found{print}' "$REFLECTOR_AGENT")
+
     {
+        echo "================================================================"
+        echo "== SYSTEM PROMPT (from $(basename "$REFLECTOR_AGENT"))"
+        echo "================================================================"
+        echo "$SYSTEM_PROMPT"
+        echo ""
+        echo "================================================================"
+        echo "== USER MESSAGE"
+        echo "================================================================"
         echo "ROLE: $role"
         echo ""
         echo "MARKET_SITUATION:"
