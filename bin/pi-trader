@@ -314,6 +314,10 @@ _DATA_SCRIPTS = {
     "review": "fetch-market-review.sh",
     "consecutive-red": "fetch-consecutive-red.sh",
     "new-high": "fetch-new-high.sh",
+    # 个股研究接口
+    "stock-fundamental": "fetch-stock-fundamental.sh",
+    "stock-themes": "fetch-stock-themes.sh",
+    "stock-candidates": "fetch-stock-candidates.sh",
 }
 
 

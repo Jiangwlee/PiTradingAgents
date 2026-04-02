@@ -101,42 +101,43 @@ $STOCKS
 报告保存路径：$OUTPUT_FILE
 EOF
 else
-    # 默认模式：从 ashare-platform 获取候选池
+    # 默认模式：通过 C5 候选池接口一次获取（已含题材交叉、一字板过滤）
     echo "正在获取候选股票数据..."
 
-    CONSECUTIVE_RED_RAW=$(bash "$PROJECT_ROOT/scripts/fetch-consecutive-red.sh" "$TRADE_DATE" 5 5 2>/dev/null | jq '.stocks // .' 2>/dev/null || echo "[]")
-    NEW_HIGH_RAW=$(bash "$PROJECT_ROOT/scripts/fetch-new-high.sh" "$TRADE_DATE" 2>/dev/null || echo "[]")
+    CANDIDATES_JSON=$(bash "$PROJECT_ROOT/scripts/fetch-stock-candidates.sh" "$TRADE_DATE" 5 10 2>/dev/null || echo '{"total":0,"candidates":[]}')
 
-    echo "正在过滤一字板..."
-    CONSECUTIVE_RED=$(echo "$CONSECUTIVE_RED_RAW" | bash "$PROJECT_ROOT/scripts/filter-yiziboard.sh" "$TRADE_DATE")
-    NEW_HIGH=$(echo "$NEW_HIGH_RAW" | bash "$PROJECT_ROOT/scripts/filter-yiziboard.sh" "$TRADE_DATE")
+    TOTAL=$(echo "$CANDIDATES_JSON" | jq '.total // 0' 2>/dev/null || echo 0)
+    CR_COUNT=$(echo "$CANDIDATES_JSON" | jq '.consecutive_red_count // 0' 2>/dev/null || echo 0)
+    NH_COUNT=$(echo "$CANDIDATES_JSON" | jq '.new_high_count // 0' 2>/dev/null || echo 0)
+    RESONANT_COUNT=$(echo "$CANDIDATES_JSON" | jq '[.candidates[] | select(.theme_resonance==true)] | length' 2>/dev/null || echo 0)
+    echo "  候选总数: ${TOTAL} 只（连阳${CR_COUNT} + 新高${NH_COUNT}）"
+    echo "  题材共振: ${RESONANT_COUNT} 只（已过滤一字板）"
 
-    CR_COUNT=$(echo "$CONSECUTIVE_RED" | jq 'length' 2>/dev/null || echo 0)
-    NH_COUNT=$(echo "$NEW_HIGH" | jq 'length' 2>/dev/null || echo 0)
-    CR_RAW_COUNT=$(echo "$CONSECUTIVE_RED_RAW" | jq 'length' 2>/dev/null || echo 0)
-    NH_RAW_COUNT=$(echo "$NEW_HIGH_RAW" | jq 'length' 2>/dev/null || echo 0)
-    echo "  5连阳以上: ${CR_COUNT} 只（过滤前 ${CR_RAW_COUNT} 只）"
-    echo "  历史新高:  ${NH_COUNT} 只（过滤前 ${NH_RAW_COUNT} 只）"
+    CANDIDATES=$(echo "$CANDIDATES_JSON" | jq '.candidates' 2>/dev/null || echo "[]")
 
     cat > "$PROMPT_FILE" << EOF
 模式：默认研究
 交易日期：$TRADE_DATE
 
-注意：候选池已过滤上一交易日为一字板的股票，不得推荐一字板股票。
+候选池已由 ashare-platform 完成以下处理：
+- 合并连阳（≥5天）和历史新高两个来源
+- 过滤上一交易日为一字板的股票
+- 交叉主流题材 Top 10，标注 theme_resonance
 
-## 候选池一：5天5阳股票（window_days=5, red_count=5）
+字段说明：
+- source: consecutive_red=连阳来源, new_high=历史新高, both=同时命中
+- consecutive_up_days/period_gain_pct/bars: 连阳结构（连阳股）
+- prev_high/prev_high_date/change_pct_today: 历史新高信息（新高股）
+- primary_theme/primary_theme_rank/primary_theme_cycle_hint: 关联主流题材
+- theme_resonance: true=主题材在 Top 10 中（题材共振）
+- prev_day_yizi: true=上一交易日为一字板（已默认过滤）
 
-字段说明：code=股票代码, name=名称, window_days=窗口天数, red_count=实际阳线数, gain_pct=区间涨幅%, bars=逐日涨跌幅
+## 候选池（共 ${TOTAL} 只）
 
-$CONSECUTIVE_RED
-
-## 候选池二：历史新高股票
-
-字段说明：code=股票代码, name=名称, price=当前价, change_pct=当日涨幅%, prev_high=前高价, prev_high_date=前高日期
-
-$NEW_HIGH
+$CANDIDATES
 
 请按照 5 轮分层淘汰研究框架，对以上候选股票进行系统研究，输出完整分析报告。
+优先关注 theme_resonance=true 的股票（共振票优先进入深度研究）。
 报告保存路径：$OUTPUT_FILE
 EOF
 fi
@@ -149,7 +150,7 @@ echo "交易日期: $TRADE_DATE"
 if [[ -n "$STOCKS" ]]; then
     echo "研究模式: 指定股票（$STOCKS）"
 else
-    echo "研究模式: 默认（7连阳+历史新高）"
+    echo "研究模式: 默认（5连阳+历史新高，题材共振优先）"
 fi
 echo "输出文件: $OUTPUT_FILE"
 echo "输出模式: $MODE"

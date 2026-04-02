@@ -1,6 +1,6 @@
 ---
 name: ashare-data
-description: "A-share market data skill wrapping the ashare-platform API. Use when: (1) fetching daily market emotion indicators, (2) retrieving theme pool or theme emotion rankings, (3) querying trend pool or individual stock trend history, (4) getting market review data."
+description: "A-share market data skill wrapping the ashare-platform API. Use when: (1) fetching daily market emotion indicators, (2) retrieving theme pool or theme emotion rankings, (3) querying trend pool or individual stock trend history, (4) getting market review data, (5) fetching strong-stock candidates with theme cross-reference, (6) looking up individual stock fundamentals or theme tags."
 tools: bash
 ---
 
@@ -69,6 +69,14 @@ pi-trader data emotion 2026-03-21
 | `consecutive-red` | Consecutive up stocks | `pi-trader data consecutive-red <trade_date> [days] [min_red]` |
 | `new-high` | Historical new high stocks | `pi-trader data new-high <trade_date>` |
 
+### Individual Stock Research
+
+| Command | Function | Usage |
+|---------|----------|-------|
+| `stock-candidates` | Strong-stock candidate pool with theme cross-reference | `pi-trader data stock-candidates <trade_date> [min_days] [top_n_themes]` |
+| `stock-fundamental` | Analyst ratings + 6-year financial forecast | `pi-trader data stock-fundamental <code>` |
+| `stock-themes` | Stock theme tags (role, stage, heat, delta) | `pi-trader data stock-themes <code> <trade_date>` |
+
 ## Parameters
 
 - `trade_date`: trading date in `YYYY-MM-DD` format
@@ -112,6 +120,28 @@ pi-trader data emotion 2026-03-21
 - `turnover_rate`: turnover rate
 - `prev_high`: previous historical high price
 - `prev_high_date`: date of previous historical high
+
+### stock-candidates fields
+- `code`, `name`: stock identifier
+- `source`: `consecutive_red` | `new_high` | `both`
+- `consecutive_up_days`, `period_gain_pct`, `bars`: trend structure (consecutive_red/both only)
+- `prev_high`, `prev_high_date`, `change_pct_today`: new-high context (new_high/both only)
+- `primary_theme`, `primary_theme_rank`, `primary_theme_cycle_hint`: top matched theme
+- `theme_resonance`: true if primary theme is in top-N themes
+- `prev_day_yizi`: true if previous day was a one-character-limit stock (filtered out by default)
+
+### stock-fundamental fields
+- `analyst_count`: number of analysts covering the stock
+- `ratings`: `{buy, outperform, neutral, underperform, sell}` counts
+- `forecast_years`: list of years (3 actuals + 3 forecasts), each with `revenue`, `revenue_growth`, `net_profit`, `net_profit_growth`, `roe`, `pe_dynamic`, `is_actual`
+
+### stock-themes fields (list)
+- `theme_name`, `theme_rank`, `theme_cycle_hint`, `theme_heat_score`: theme identity and status
+- `role_in_theme`: `leader` | `core` | `member` | `edge` (may be null)
+- `rank_in_theme`: stock's rank within the theme
+- `theme_rank_3d_delta`: theme rank change over 3 days (negative = rising)
+- `is_theme_leader`: whether this stock is the theme leader today
+- `leader_names`: list of leader stock names in this theme
 
 ## Failure Handling
 
