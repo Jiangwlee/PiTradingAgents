@@ -549,6 +549,55 @@ echo "阶段 3 完成"
 
 fi  # end should_run_stage 3
 
+# ======== 阶段 3.5: 个股深度研究 ========
+
+if should_run_stage 3 || should_run_stage 4; then
+
+echo ""
+echo "=== 阶段 3.5: 个股深度研究 ==="
+echo "[研究员] 获取候选池并执行五维度分析..."
+
+STOCK_RESEARCH_FILE="$REPORT_DIR/08-stock-research.md"
+RESEARCHER_PROMPT="$TMP_DIR/researcher-prompt.txt"
+
+# 获取 C5 候选池（已含题材交叉、一字板过滤）
+CANDIDATES_JSON=$(bash "$PROJECT_ROOT/scripts/fetch-stock-candidates.sh" "$TRADE_DATE" 5 10 2>/dev/null \
+    || echo '{"trade_date":"'$TRADE_DATE'","total":0,"candidates":[]}')
+
+TOTAL=$(echo "$CANDIDATES_JSON" | jq '.total // 0' 2>/dev/null || echo 0)
+RESONANT=$(echo "$CANDIDATES_JSON" | jq '[.candidates[] | select(.theme_resonance==true)] | length' 2>/dev/null || echo 0)
+echo "  候选总数: ${TOTAL} 只，题材共振: ${RESONANT} 只"
+
+{
+    echo "交易日期：$TRADE_DATE"
+    echo ""
+    echo "## 候选池（共 ${TOTAL} 只，题材共振 ${RESONANT} 只）"
+    echo ""
+    echo "$CANDIDATES_JSON" | jq '.candidates' 2>/dev/null || echo "[]"
+    echo ""
+    echo "## 题材分析报告（02-theme-report.md）"
+    echo ""
+    cat "$REPORT_DIR/02-theme-report.md" 2>/dev/null || echo "（题材分析报告不可用）"
+    echo ""
+    echo "## 题材辩论结论（06-theme-debate.md）"
+    echo ""
+    cat "$REPORT_DIR/06-theme-debate.md" 2>/dev/null || echo "（题材辩论结论不可用）"
+    echo ""
+    echo "报告保存路径：$STOCK_RESEARCH_FILE"
+} > "$RESEARCHER_PROMPT"
+
+run_agent "个股研究员" "$STOCK_RESEARCH_FILE" \
+    "$PROJECT_ROOT/agents/researchers/stock-researcher-pipeline.md" \
+    "@$RESEARCHER_PROMPT" || echo "[警告] 个股研究员执行失败，继续执行阶段 4"
+
+if [[ -s "$STOCK_RESEARCH_FILE" ]]; then
+    echo "阶段 3.5 完成 ✓"
+else
+    echo "[警告] 个股研究报告未生成，阶段 4 将不含选股参考"
+fi
+
+fi  # end should_run_stage 3.5
+
 # ======== 阶段 4: 最终决策 ========
 
 if should_run_stage 4; then
