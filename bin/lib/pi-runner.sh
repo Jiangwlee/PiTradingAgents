@@ -142,3 +142,28 @@ render_completed_stream_block() {
     model="$(map_model_id "$model")"
     python3 "$PI_STREAM_PY" render-single --label "$label" --model "$model" --tools "$tools" --file "$json_log"
 }
+
+
+# resolve_trade_date — 确定行情日期
+# 规则：若最近交易日是今天且当前时间 < 16:00，使用前一交易日（16:00 前数据未采集完成）
+# 依赖：jq，$API_URL 或 $ASHARE_API_URL 环境变量
+resolve_trade_date() {
+    local _api="${API_URL:-${ASHARE_API_URL:-http://127.0.0.1:8000}}"
+    local recent latest prev today now_hhmm
+    recent=$(curl -sf --connect-timeout 5 --max-time 10 \
+        "$_api/trade-dates/recent?days=30" 2>/dev/null) || {
+        echo "[错误] 无法连接 ashare-platform API: $_api" >&2
+        echo "[错误] 请确认服务已启动，或手动指定日期" >&2
+        return 1
+    }
+    latest=$(echo "$recent" | jq -r '.trade_dates[-1]')
+    prev=$(echo "$recent"   | jq -r '.trade_dates[-2]')
+    today=$(date +%Y-%m-%d)
+    now_hhmm=$(date +%H%M)
+
+    if [[ "$latest" == "$today" && "$now_hhmm" < "1600" ]]; then
+        echo "$prev"
+    else
+        echo "$latest"
+    fi
+}

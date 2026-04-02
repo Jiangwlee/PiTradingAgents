@@ -74,30 +74,7 @@ should_run_stage() {
 }
 
 # 确定行情日期（TRADE_DATE）
-# 规则：所有从 ashare-platform（8000端口）取数的日期必须统一
-#   - 用户显式传入日期 → 直接使用
-#   - 否则：从 API 取最近交易日列表，若最后一个交易日是今天且当前时间 < 15:30，
-#           则用倒数第二个交易日（数据采集在 15:30 之后，未收盘日无完整数据）
-resolve_trade_date() {
-    local recent latest prev today now_hhmm
-    recent=$(curl -sf --connect-timeout 5 --max-time 10 \
-        "$API_URL/trade-dates/recent?days=30" 2>/dev/null) || {
-        echo "[错误] 无法连接 ashare-platform API: $API_URL" >&2
-        echo "[错误] 请确认服务已启动，或手动指定日期: $0 YYYY-MM-DD" >&2
-        exit 1
-    }
-    latest=$(echo "$recent" | jq -r '.trade_dates[-1]')
-    prev=$(echo "$recent"   | jq -r '.trade_dates[-2]')
-    today=$(date +%Y-%m-%d)
-    now_hhmm=$(date +%H%M)
-
-    if [[ "$latest" == "$today" && "$now_hhmm" < "1530" ]]; then
-        # 今天是交易日但 15:30 前数据未采集完成，使用前一交易日
-        echo "$prev"
-    else
-        echo "$latest"
-    fi
-}
+# resolve_trade_date 来自 bin/lib/pi-runner.sh
 
 if [[ $# -gt 0 ]]; then
     TRADE_DATE="$1"

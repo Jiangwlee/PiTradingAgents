@@ -53,27 +53,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ======== 确定交易日期 ========
-
-# 规则：若最后一个交易日是今天且当前时间 < 15:30，使用前一交易日
-resolve_trade_date() {
-    local recent latest prev today now_hhmm
-    recent=$(curl -sf --connect-timeout 5 --max-time 10 \
-        "$API_URL/trade-dates/recent?days=30" 2>/dev/null) || {
-        echo "[错误] 无法连接 ashare-platform API: $API_URL" >&2
-        echo "[错误] 请确认服务已启动" >&2
-        exit 1
-    }
-    latest=$(echo "$recent" | jq -r '.trade_dates[-1]')
-    prev=$(echo "$recent"   | jq -r '.trade_dates[-2]')
-    today=$(date +%Y-%m-%d)
-    now_hhmm=$(date +%H%M)
-
-    if [[ "$latest" == "$today" && "$now_hhmm" -lt "1530" ]]; then
-        echo "$prev"
-    else
-        echo "$latest"
-    fi
-}
+# resolve_trade_date 来自 bin/lib/pi-runner.sh
 
 TRADE_DATE=$(resolve_trade_date)
 REPORT_DIR="$REPORTS_ROOT/$TRADE_DATE"
@@ -124,7 +104,7 @@ else
     # 默认模式：从 ashare-platform 获取候选池
     echo "正在获取候选股票数据..."
 
-    CONSECUTIVE_RED_RAW=$(bash "$PROJECT_ROOT/scripts/fetch-consecutive-red.sh" "$TRADE_DATE" 5 5 2>/dev/null || echo "[]")
+    CONSECUTIVE_RED_RAW=$(bash "$PROJECT_ROOT/scripts/fetch-consecutive-red.sh" "$TRADE_DATE" 5 5 2>/dev/null | jq '.stocks // .' 2>/dev/null || echo "[]")
     NEW_HIGH_RAW=$(bash "$PROJECT_ROOT/scripts/fetch-new-high.sh" "$TRADE_DATE" 2>/dev/null || echo "[]")
 
     echo "正在过滤一字板..."
