@@ -44,13 +44,7 @@ PiTradingAgents/
 │   ├── calc-signals.py                 # 结果信号计算（比较预测 vs 实际涨跌）
 │   └── extract-reflections.py          # 从 Reflector 输出提取 JSON 反思结果
 │
-├── data/
-│   ├── reports/{YYYY-MM-DD}/           # 每日分析报告输出
-│   └── memory/                         # 角色记忆库（BM25 检索）
-│       ├── bull.jsonl                  # 看多辩手历史教训
-│       ├── bear.jsonl                  # 看空辩手历史教训
-│       ├── judge.jsonl                 # 裁判历史教训
-│       └── trader.jsonl               # 投资经理历史教训
+├── data/                               # 符号链接或占位，实际数据在 ~/.local/share/PiTradingAgents/
 │
 ├── docs/
 │   ├── theory/                         # 情绪周期理论文档
@@ -63,6 +57,24 @@ PiTradingAgents/
     ├── ashare-platform/                # 参考：数据采集（已部署为独立服务）
     └── pi-mono/                        # 参考：Pi Agent 框架源码
 ```
+
+## 数据根目录
+
+所有运行时数据（报告、记忆库、信号等）存储在：
+
+```
+~/.local/share/PiTradingAgents/
+├── reports/{YYYY-MM-DD}/   # 每日分析报告输出（pi-trader run 结果）
+├── memory/                 # 角色记忆库（BM25 检索）
+│   ├── bull.jsonl
+│   ├── bear.jsonl
+│   ├── judge.jsonl
+│   └── trader.jsonl
+├── research/               # 个股深度研究输出（pi-trader research 结果）
+└── signals/                # 复盘信号数据
+```
+
+项目内 `data/` 目录已废弃，不再使用。
 
 ## 技术栈
 
@@ -203,10 +215,10 @@ bash skills/ashare-data/scripts/fetch-market-emotion.sh 2026-03-21
 
 | 角色 | 记忆库 | 注入时机 |
 |------|--------|---------|
-| 看多辩手 | data/memory/bull.jsonl | 阶段 2/3 bull prompt |
-| 看空辩手 | data/memory/bear.jsonl | 阶段 2/3 bear prompt |
-| 市场/题材裁判 | data/memory/judge.jsonl | 阶段 2/3 judge prompt |
-| 投资经理 | data/memory/trader.jsonl | 阶段 4 final prompt |
+| 看多辩手 | ~/.local/share/PiTradingAgents/memory/bull.jsonl | 阶段 2/3 bull prompt |
+| 看空辩手 | ~/.local/share/PiTradingAgents/memory/bear.jsonl | 阶段 2/3 bear prompt |
+| 市场/题材裁判 | ~/.local/share/PiTradingAgents/memory/judge.jsonl | 阶段 2/3 judge prompt |
+| 投资经理 | ~/.local/share/PiTradingAgents/memory/trader.jsonl | 阶段 4 final prompt |
 
 ### 复盘信号类型
 
@@ -252,7 +264,7 @@ pi-trader doctor
 bin/memory.py query --role bull --n 3 --situation "冰点期 涨停下降"
 
 # 手动生成 state.json（pipeline 阶段 5 会自动执行）
-bin/save-state.py data/reports/2026-03-20 2026-03-20 > data/reports/2026-03-20/state.json
+bin/save-state.py ~/.local/share/PiTradingAgents/reports/2026-03-20 2026-03-20 > ~/.local/share/PiTradingAgents/reports/2026-03-20/state.json
 
 # 单独运行某个 Agent（调试用）
 pi --print --agent agents/analysts/emotion-analyst.md "2026-03-21"

@@ -167,3 +167,29 @@ resolve_trade_date() {
         echo "$latest"
     fi
 }
+
+# prev_trade_date <YYYY-MM-DD> — 返回给定交易日的前一个交易日
+# API 失败时回退到跳过周末的简单推算
+prev_trade_date() {
+    local ref="$1"
+    local _api="${API_URL:-${ASHARE_API_URL:-http://127.0.0.1:8000}}"
+    local recent result
+    recent=$(curl -sf --connect-timeout 5 --max-time 10 \
+        "$_api/trade-dates/recent?days=30" 2>/dev/null) || recent=""
+    if [[ -n "$recent" ]]; then
+        result=$(echo "$recent" | jq -r --arg ref "$ref" \
+            '[.trade_dates[] | select(. < $ref)] | last // empty')
+        if [[ -n "$result" ]]; then
+            echo "$result"
+            return
+        fi
+    fi
+    # 回退：跳过周末
+    python3 -c "
+from datetime import datetime, timedelta
+d = datetime.strptime('$ref', '%Y-%m-%d') - timedelta(days=1)
+while d.weekday() >= 5:
+    d -= timedelta(days=1)
+print(d.strftime('%Y-%m-%d'))
+"
+}

@@ -91,6 +91,13 @@ fi
 REPORT_DIR="$REPORTS_ROOT/$TRADE_DATE"
 mkdir -p "$REPORT_DIR"
 
+# 计算前一交易日及昨日报告路径（供投资经理对比用）
+PREV_TRADE_DATE=$(prev_trade_date "$TRADE_DATE" 2>/dev/null || echo "")
+PREV_REPORT_PATH=""
+if [[ -n "$PREV_TRADE_DATE" && -f "$REPORTS_ROOT/$PREV_TRADE_DATE/07-final-report.md" ]]; then
+    PREV_REPORT_PATH="$REPORTS_ROOT/$PREV_TRADE_DATE/07-final-report.md"
+fi
+
 # 创建临时目录（P0-1 修复）
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -666,6 +673,12 @@ FINAL_PROMPT="$TMP_DIR/final-prompt.txt"
     echo ""
     echo "=== 选股原则 ==="
     cat "$CRITERIA_FILE"
+    if [[ -n "$PREV_REPORT_PATH" ]]; then
+        echo ""
+        echo "=== 昨日报告路径 ==="
+        echo "前一交易日：$PREV_TRADE_DATE"
+        echo "路径：$PREV_REPORT_PATH"
+    fi
 } > "$FINAL_PROMPT"
 
 run_agent "投资经理" "$REPORT_DIR/07-final-report.md" "$PROJECT_ROOT/agents/decision/investment-manager.md" "@$FINAL_PROMPT" || {
