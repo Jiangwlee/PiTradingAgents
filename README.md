@@ -7,7 +7,7 @@
 PiTradingAgents 是一个 A 股投资分析系统，采用多 Agent 协作架构，通过情绪周期判断、题材识别、趋势分析和多空辩论，生成投资决策报告。
 
 **核心特性:**
-- 🧠 多 Agent 协作（情绪/题材/趋势/催化剂分析师 + 多空辩手 + 裁判）
+- 🧠 多 Agent 协作（情绪/题材/趋势/催化剂分析师 + 多空辩手 + 裁判 + 个股研究员）
 - 📊 六阶段情绪周期理论量化分析
 - 💡 自进化机制（复盘反思 + BM25 记忆检索）
 - 🔌 集成 ashare-platform 行情数据 API
@@ -42,9 +42,12 @@ curl http://localhost:8000/health  # 应该返回 {"status":"ok"}
 pi-trader run 2026-03-24
 
 # 3. 运行复盘反思（在次日执行）
-pi-trader insight 2026-03-23
+pi-trader reflect 2026-03-23
 
-# 4. 查询市场数据
+# 4. 个股深度研究
+pi-trader research
+
+# 5. 查询市场数据
 pi-trader data emotion 2026-03-24
 pi-trader data theme-pool 2026-03-24 50
 
@@ -59,18 +62,21 @@ pi-trader run --help
 PiTradingAgents/
 ├── agents/                 # Agent 定义
 │   ├── analysts/          # 分析师（情绪/题材/趋势/催化剂）
+│   ├── researchers/       # 个股研究员
 │   ├── debaters/          # 多空辩手
 │   ├── judges/            # 裁判
-│   ├── reflection/        # Reflector Agent
+│   ├── reflection/        # Reflector Agent + 经验注入
 │   └── decision/          # 投资经理
 ├── bin/                    # 可执行脚本
 │   ├── pi-trader          # CLI 入口
 │   ├── run-analysis.sh    # 分析 Pipeline
-│   └── run-reflect.sh     # 复盘 Pipeline
-├── cli/                    # Python CLI 包
-│   └── app.py             # Typer 应用
-├── docs/                   # 文档
+│   ├── run-research.sh    # 个股研究 Pipeline
+│   ├── run-reflect.sh     # 复盘 Pipeline
+│   └── lib/               # 共享 Shell 函数库
+├── skills/                 # Agent Skill 定义
+│   └── ashare-data/       # 数据采集 Skill
 ├── scripts/                # 数据获取脚本
+├── docs/                   # 文档
 ├── install.sh              # 安装脚本
 └── README.md              # 本文件
 ```
@@ -82,7 +88,7 @@ PiTradingAgents/
 | 内容 | 路径 | 说明 |
 |------|------|------|
 | 应用代码 | `~/.PiTradingAgents/` | 程序、脚本、虚拟环境 |
-| 运行时数据 | `~/.local/share/PiTradingAgents/` | 报告、记忆库 |
+| 运行时数据 | `~/.local/share/PiTradingAgents/` | 报告、记忆库、信号 |
 | 用户配置 | `~/.config/PiTradingAgents/` | 环境变量配置 |
 | 命令入口 | `~/.local/bin/pi-trader` | CLI 命令 |
 
@@ -118,48 +124,30 @@ curl http://localhost:8000/health
 
 **注意**: 如果 ashare-data 未运行，PiTradingAgents 将无法获取市场数据，所有命令都会失败。
 
-## 依赖
-
-```bash
-# 自动安装（通过 install.sh）
-- typer
-- rich
-- requests
-
-# 系统依赖
-- python3
-- git
-- bash
-- jq
-- curl
-```
-
 ## Pipeline 流程
 
 ```
-分析团队（并行）                辩论团队（顺序）              决策
+分析团队（并行）          辩论团队（顺序）         研究          决策
 ┌──────────────┐
 │ 情绪分析师   │──┐
-│ 题材分析师   │──┤          ┌─────────────────┐
-│ 趋势分析师   │──├── 4份 ──→│ 市场辩论        │
-│ 催化剂分析师 │──┘   报告   │ (多→空→裁判)    │     ┌──────────┐
-└──────────────┘             │                 │────→│ 投资经理 │──→ 最终报告
-                             │ 题材辩论 Top3   │     └──────────┘
-                             │ (多→空→裁判)    │
-                             └─────────────────┘
-                                      ↓
-                             复盘反思（次日）
-                             - Signal A/B/C 计算
-                             - Reflector Agent 反思
-                             - 记忆库存储
+│ 题材分析师   │──┤       ┌────────────────┐
+│ 趋势分析师   │──├─4份──→│ 市场辩论        │   ┌──────────┐   ┌──────────┐
+│ 催化剂分析师 │──┘  报告 │ (多→空→裁判)   │──→│ 个股研究 │──→│ 投资经理 │──→ 最终报告
+└──────────────┘          │ 题材辩论 Top3  │   │ 员 3.5   │   └──────────┘
+                          │ (多→空→裁判)   │   └──────────┘
+                          └────────────────┘
 ```
+
+复盘反思（次日执行）：Signal A/B/C 计算 → Reflector Agent 反思 → 记忆库存储
 
 ## 命令
 
 | 命令 | 说明 |
 |------|------|
 | `pi-trader run [DATE]` | 运行分析 Pipeline |
-| `pi-trader insight DATE` | 运行复盘反思 |
+| `pi-trader research [--stocks CODE,CODE]` | 个股深度研究 |
+| `pi-trader reflect [DATE]` | 复盘反思（自进化） |
+| `pi-trader inject EXPERIENCE` | 注入交易经验到记忆库 |
 | `pi-trader data <sub>` | 查询市场数据 |
 | `pi-trader doctor` | 系统诊断 |
 
@@ -200,15 +188,6 @@ git pull
 ./install.sh --uninstall
 ```
 
-## 贡献
-
-欢迎提交 Issue 和 Pull Request。
-
 ## 许可证
 
 MIT License
-
----
-
-**版本**: 1.1.0  
-**更新日期**: 2026-03-25

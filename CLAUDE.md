@@ -42,9 +42,14 @@ PiTradingAgents/
 │   ├── memory.py                       # BM25+jieba 记忆存储/检索 CLI
 │   ├── save-state.py                   # Pipeline 状态保存（提取预测字段为 state.json）
 │   ├── calc-signals.py                 # 结果信号计算（比较预测 vs 实际涨跌）
-│   └── extract-reflections.py          # 从 Reflector 输出提取 JSON 反思结果
+│   ├── extract-reflections.py          # 从 Reflector 输出提取 JSON 反思结果
+│   ├── extract-picks.py                # 从最终报告提取荐股列表
+│   ├── update-signals.py               # 信号库评分更新与条件轮换
+│   └── lib/                            # 共享 Shell 函数库（pi-runner.sh）
 │
-├── data/                               # 符号链接或占位，实际数据在 ~/.local/share/PiTradingAgents/
+├── scripts/                            # 数据获取脚本（从 skills/ 迁出，直接 bash 调用）
+│
+├── data/                               # 已废弃，不存在；数据在 ~/.local/share/PiTradingAgents/
 │
 ├── docs/
 │   ├── theory/                         # 情绪周期理论文档
@@ -141,32 +146,9 @@ model: qwen3.5-35b
 
 ### Skill 规范
 
-#### 职责分离（核心原则）
-
-- **SKILL.md** — 负责说明 HOW：脚本路径、参数、返回格式、错误处理。是唯一事实来源。
-- **Agent .md** — 只说明 WHEN：在什么场景下使用某个 skill，不写具体脚本名或路径。
-- 如果 Agent 当前依赖的脚本行为在 SKILL.md 中未覆盖，应增强 SKILL.md（如新增 `references/commands.md`），而不是在 Agent 里补充。
-
-#### Pi bash 工作目录
-
-Pi 的 bash 工具 CWD 是**项目根目录**（不是 skill 目录）。因此 SKILL.md 中的脚本调用示例应写完整路径：
-
-```bash
-bash skills/ashare-data/scripts/fetch-market-emotion.sh 2026-03-21
-```
-
-验证方法：`pi --no-session --print --tools bash --skill <skill_dir> --system-prompt "run: bash -c 'pwd'" "test"`
-
-#### SKILL.md 质量要求
-
-参照 `/home/bruce/.claude/skills/skill-review/` 的 12 维度 rubric，关键要求：
-
-1. **description 触发公式**：`[能力概述] + "Use when" + [(1)场景 (2)场景 ...]`，缺少 "Use when" 则无法正确触发
-2. **Prerequisite Check 节**：列出外部依赖（API、CLI 工具），提供检测命令，说明失败时停止
-3. **硬约束用 Iron Law 格式**：`NO <禁止行为>. No exceptions.`，不能用软语言（"请不要"、"尽量避免"）
-4. **Guardrails 节**：集中列出最关键的行为约束，用权威语气（NEVER、ALWAYS、Do NOT）
-5. **语言**：指令性内容用英文，中文只用于用户可见的触发短语和示例字符串
-6. **参考文档条件加载**：`If X, read references/x.md`，不无条件列出
+- **SKILL.md** 负责 HOW（脚本路径、参数、返回格式），**Agent .md** 只说明 WHEN
+- Pi bash 工具 CWD 是**项目根目录**，脚本调用写完整路径
+- 质量要求详见 `docs/design/` 相关文档
 
 #### ashare-data Skill 注意事项
 
@@ -213,12 +195,14 @@ bash skills/ashare-data/scripts/fetch-market-emotion.sh 2026-03-21
 
 ### 记忆角色映射
 
+路径相对于数据根目录（`~/.local/share/PiTradingAgents/`）：
+
 | 角色 | 记忆库 | 注入时机 |
 |------|--------|---------|
-| 看多辩手 | ~/.local/share/PiTradingAgents/memory/bull.jsonl | 阶段 2/3 bull prompt |
-| 看空辩手 | ~/.local/share/PiTradingAgents/memory/bear.jsonl | 阶段 2/3 bear prompt |
-| 市场/题材裁判 | ~/.local/share/PiTradingAgents/memory/judge.jsonl | 阶段 2/3 judge prompt |
-| 投资经理 | ~/.local/share/PiTradingAgents/memory/trader.jsonl | 阶段 4 final prompt |
+| 看多辩手 | memory/bull.jsonl | 阶段 2/3 bull prompt |
+| 看空辩手 | memory/bear.jsonl | 阶段 2/3 bear prompt |
+| 市场/题材裁判 | memory/judge.jsonl | 阶段 2/3 judge prompt |
+| 投资经理 | memory/trader.jsonl | 阶段 4 final prompt |
 
 ### 复盘信号类型
 
@@ -264,7 +248,7 @@ pi-trader doctor
 bin/memory.py query --role bull --n 3 --situation "冰点期 涨停下降"
 
 # 手动生成 state.json（pipeline 阶段 5 会自动执行）
-bin/save-state.py ~/.local/share/PiTradingAgents/reports/2026-03-20 2026-03-20 > ~/.local/share/PiTradingAgents/reports/2026-03-20/state.json
+bin/save-state.py $PITA_DATA_DIR/reports/2026-03-20 2026-03-20 > $PITA_DATA_DIR/reports/2026-03-20/state.json
 
 # 单独运行某个 Agent（调试用）
 pi --print --agent agents/analysts/emotion-analyst.md "2026-03-21"
