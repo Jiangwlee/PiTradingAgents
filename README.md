@@ -103,26 +103,26 @@ PiTradingAgents/
 
 - Python 3.12+
 - Linux/macOS (Bash)
-- **[ashare-data](https://github.com/Jiangwlee/ashare-data)** - 行情数据服务（**必需**）
+- **[ashare-platform](https://github.com/Jiangwlee/ashare-platform)** - 行情数据服务（**必需**）
 - 可选: Chrome 浏览器（用于深度研究）
 
-### 前置依赖：ashare-data
+### 前置依赖：ashare-platform
 
-**PiTradingAgents 依赖 ashare-data 提供行情数据，必须先安装并启动 ashare-data 服务。**
+**PiTradingAgents 依赖 ashare-platform 提供行情数据，必须先安装并启动服务。**
 
 ```bash
-# 1. 克隆 ashare-data
-git clone git@github.com:Jiangwlee/ashare-data.git
-cd ashare-data
+# 1. 克隆 ashare-platform
+git clone git@github.com:Jiangwlee/ashare-platform.git
+cd ashare-platform
 
-# 2. 按照 ashare-data 的文档启动服务（通常使用 Docker）
+# 2. 按照 ashare-platform 的文档启动服务（通常使用 Docker）
 docker-compose up -d
 
 # 3. 验证服务是否运行
 curl http://localhost:8000/health
 ```
 
-**注意**: 如果 ashare-data 未运行，PiTradingAgents 将无法获取市场数据，所有命令都会失败。
+**注意**: 如果 ashare-platform 未运行，PiTradingAgents 将无法获取市场数据，所有命令都会失败。
 
 ## Pipeline 流程
 
@@ -170,22 +170,15 @@ pi-trader run -s 1,2 2026-03-24      # 阶段 1+2
 | 名称 | Provider/ID |
 |------|-------------|
 | qwen3.5-35b | litellm-local/qwen3.5-35b |
-| qwen3.5-27b | litellm-local/qwen3.5-27b |
-| kimi-k2p5 | kimi-coding/k2p5 |
-| kimi-k2-thinking | kimi-coding/kimi-k2-thinking |
+
+更多模型可通过 `~/.config/PiTradingAgents/config.env` 中的 `PITA_DEFAULT_MODEL` 等变量配置。
 
 ## 升级
 
 ```bash
 cd ~/Projects/PiTradingAgents
 git pull
-./install.sh --upgrade
-```
-
-## 卸载
-
-```bash
-./install.sh --uninstall
+./install.sh
 ```
 
 ## 许可证
