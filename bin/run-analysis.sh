@@ -189,7 +189,9 @@ echo "模式: $MODE"
 echo "=============================================="
 
 # web-operator CLI 可用性检查
-OMP_WEB_OPERATOR_BIN="omp-web-operator"
+OMP_WEB_OPERATOR_BIN="omp"
+OMP_WEB_OPERATOR_CMD="omp web-operator"
+WEB_OPERATOR_SKILL="$HOME/.agents/skills/web-operator"
 
 # ======== 阶段 1: 分析团队（并行） ========
 
@@ -241,7 +243,7 @@ echo "[分析师] 趋势分析师启动..."
 # 4. 催化剂分析师（检查 web-operator 可用性）
 (
     if command -v "$OMP_WEB_OPERATOR_BIN" >/dev/null 2>&1; then
-        PI_DEFER_RENDER=1 run_parallel_agent "催化剂分析师" "$REPORT_DIR/04-catalyst-report.md" "$PROJECT_ROOT/agents/analysts/catalyst-analyst.md" "/skill:ashare-data ${TRADE_DATE}" \
+        EXTRA_SKILLS="$WEB_OPERATOR_SKILL" PI_DEFER_RENDER=1 run_parallel_agent "催化剂分析师" "$REPORT_DIR/04-catalyst-report.md" "$PROJECT_ROOT/agents/analysts/catalyst-analyst.md" "/skill:ashare-data ${TRADE_DATE}" \
             && echo ok > "$TMP_DIR/catalyst.status" || echo fail > "$TMP_DIR/catalyst.status"
     else
         cat > "$REPORT_DIR/04-catalyst-report.md" << 'EOF'
@@ -249,10 +251,10 @@ echo "[分析师] 趋势分析师启动..."
 
 ### 降级模式
 
-**状态**: `omp-web-operator` 不可用，深度研究跳过
+**状态**: `omp web-operator` 不可用，深度研究跳过
 
-**原因**: 
-- `omp-web-operator` 命令不可用，或
+**原因**:
+- `omp` 命令不可用，或
 - 本地浏览器调试环境未就绪
 
 **影响**:
@@ -260,7 +262,7 @@ echo "[分析师] 趋势分析师启动..."
 - 辩论团队将仅基于量化数据进行分析
 
 **建议**:
-- 如需深度研究，请确保 `omp-web-operator` 可执行且浏览器调试环境可用
+- 如需深度研究，请确保 `omp web-operator` 可执行且浏览器调试环境可用
 - 或继续使用现有量化分析报告进行后续分析
 
 ### 可用数据源
@@ -281,7 +283,7 @@ if [[ "$MODE" == "stream" ]]; then
 fi
 echo "[分析师] 催化剂分析师启动..."
 if ! command -v "$OMP_WEB_OPERATOR_BIN" >/dev/null 2>&1; then
-    echo "  omp-web-operator 不可用，催化剂分析师将输出降级报告"
+    echo "  omp web-operator 不可用，催化剂分析师将输出降级报告"
 fi
 
 # 等待所有分析师完成
@@ -347,7 +349,7 @@ BULL_PROMPT="$TMP_DIR/bull-prompt.txt"
     cat "$REPORTS_CTX"
 } > "$BULL_PROMPT"
 
-run_agent "看多辩手" "$REPORT_DIR/05a-bull-argument.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" "@$BULL_PROMPT" || echo "[警告] 看多辩手执行失败"
+EXTRA_SKILLS="$WEB_OPERATOR_SKILL" run_agent "看多辩手" "$REPORT_DIR/05a-bull-argument.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" "@$BULL_PROMPT" || echo "[警告] 看多辩手执行失败"
 
 # 2. 看空辩手（P0-1 修复：使用临时 prompt 文件）
 echo "[辩论] 看空辩手构建论据..."
@@ -371,7 +373,7 @@ BEAR_PROMPT="$TMP_DIR/bear-prompt.txt"
     cat "$REPORT_DIR/05a-bull-argument.md" 2>/dev/null || echo "无"
 } > "$BEAR_PROMPT"
 
-run_agent "看空辩手" "$REPORT_DIR/05b-bear-argument.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" "@$BEAR_PROMPT" || echo "[警告] 看空辩手执行失败"
+EXTRA_SKILLS="$WEB_OPERATOR_SKILL" run_agent "看空辩手" "$REPORT_DIR/05b-bear-argument.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" "@$BEAR_PROMPT" || echo "[警告] 看空辩手执行失败"
 
 # 3. 市场裁判（P0-1 修复：使用临时 prompt 文件）
 echo "[裁判] 市场环境裁判综合判定..."
@@ -466,7 +468,7 @@ while IFS= read -r theme <&3; do
     } > "$THEME_BULL_PROMPT"
     
     MODEL_OVERRIDE="${PITA_MODEL_STAGE3_BULL:-$_STAGE3_MODEL_SAVED}"
-    run_agent "题材${THEME_IDX}看多" "$REPORT_DIR/06a-bull-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" "@$THEME_BULL_PROMPT" || echo "  [警告] 题材 $theme 看多辩手执行失败"
+    EXTRA_SKILLS="$WEB_OPERATOR_SKILL" run_agent "题材${THEME_IDX}看多" "$REPORT_DIR/06a-bull-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bull-debater.md" "@$THEME_BULL_PROMPT" || echo "  [警告] 题材 $theme 看多辩手执行失败"
 
     # 题材看空辩论（P0-1 修复：使用临时 prompt 文件）
     echo "  ├─ 看空辩手..."
@@ -492,7 +494,7 @@ while IFS= read -r theme <&3; do
     } > "$THEME_BEAR_PROMPT"
     
     MODEL_OVERRIDE="${PITA_MODEL_STAGE3_BEAR:-$_STAGE3_MODEL_SAVED}"
-    run_agent "题材${THEME_IDX}看空" "$REPORT_DIR/06b-bear-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" "@$THEME_BEAR_PROMPT" || echo "  [警告] 题材 $theme 看空辩手执行失败"
+    EXTRA_SKILLS="$WEB_OPERATOR_SKILL" run_agent "题材${THEME_IDX}看空" "$REPORT_DIR/06b-bear-${THEME_IDX}.md" "$PROJECT_ROOT/agents/debaters/bear-debater.md" "@$THEME_BEAR_PROMPT" || echo "  [警告] 题材 $theme 看空辩手执行失败"
 done 3<<< "$TOP_THEMES"
 
 # 如果没有任何题材被处理，生成提示
@@ -593,7 +595,7 @@ echo "  候选总数: ${TOTAL} 只，题材共振: ${RESONANT} 只"
     echo "报告保存路径：$STOCK_RESEARCH_FILE"
 } > "$RESEARCHER_PROMPT"
 
-run_agent "个股研究员" "$STOCK_RESEARCH_FILE" \
+EXTRA_SKILLS="$WEB_OPERATOR_SKILL" run_agent "个股研究员" "$STOCK_RESEARCH_FILE" \
     "$PROJECT_ROOT/agents/researchers/stock-researcher-pipeline.md" \
     "@$RESEARCHER_PROMPT" || echo "[警告] 个股研究员执行失败，继续执行阶段 4"
 
@@ -662,12 +664,26 @@ else
     echo "（信号库不存在，无法生成选股原则）" > "$CRITERIA_FILE"
 fi
 
+# 获取历史新高个股数据
+NEW_HIGH_DATA=$(bash "$PROJECT_ROOT/scripts/fetch-new-high.sh" "$TRADE_DATE" 2>/dev/null || echo "")
+NEW_HIGH_COUNT=0
+if [[ -n "$NEW_HIGH_DATA" && "$NEW_HIGH_DATA" != "null" ]]; then
+    NEW_HIGH_COUNT=$(echo "$NEW_HIGH_DATA" | jq 'length' 2>/dev/null || echo 0)
+fi
+echo "  历史新高个股: ${NEW_HIGH_COUNT} 只"
+
 # 投资经理 prompt 文件（P0-1 修复）
 FINAL_PROMPT="$TMP_DIR/final-prompt.txt"
 {
     echo "所有分析报告:"
     cat "$ALL_REPORTS_CTX"
     echo ""
+    if [[ -n "$NEW_HIGH_DATA" && "$NEW_HIGH_DATA" != "null" && "$NEW_HIGH_COUNT" -gt 0 ]]; then
+        echo "=== 创历史新高个股数据 ==="
+        echo "以下个股在 $TRADE_DATE 创出历史新高（共 ${NEW_HIGH_COUNT} 只）："
+        echo "$NEW_HIGH_DATA"
+        echo ""
+    fi
     echo "历史记忆:"
     cat "$LESSONS_FILE"
     echo ""
