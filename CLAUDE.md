@@ -47,7 +47,7 @@ PiTradingAgents/
 │   ├── update-signals.py               # 信号库评分更新与条件轮换
 │   └── lib/                            # 共享 Shell 函数库（pi-runner.sh）
 │
-├── scripts/                            # 数据获取脚本（从 skills/ 迁出，直接 bash 调用）
+├── scripts/                            # 数据获取脚本（ashare API + THS 排行 + 问财涨幅榜）
 │
 ├── data/                               # 已废弃，不存在；数据在 ~/.local/share/PiTradingAgents/
 │
@@ -88,7 +88,8 @@ PiTradingAgents/
 | Agent 框架 | Pi (pi-coding-agent) | .md 文件定义 Agent，YAML frontmatter + system prompt |
 | LLM | qwen3.5-35b | 所有 Agent 统一使用此模型 |
 | 数据接口 | ashare-platform (FastAPI) | 本地运行 http://127.0.0.1:8000 |
-| 深度研究 | web-operator Skill (`omp-web-operator`) | 催化剂分析师通过 Google/淘股吧/雪球搜索和阅读 |
+| 外部数据 | THS 排行 + 问财涨幅榜 | 连续上涨/持续放量/量价齐升/60-240日涨幅 Top 50 |
+| 深度研究 | web-operator Skill (`omp web-operator`) | 催化剂分析师通过 Google/淘股吧/雪球搜索和阅读 |
 | 编排 | Shell 脚本 | bin/run-analysis.sh 按 Pipeline 模式调度各 Agent |
 | 语言 | Shell (脚本) | Skills 层为 bash curl wrapper |
 | 记忆检索 | BM25 + jieba | bin/memory.py，中文分词语义匹配历史教训 |
@@ -100,7 +101,7 @@ PiTradingAgents/
 
 - **Pi CLI** — Agent 运行时，通过 `pi --print --agent <file.md>` 调用
 - **ashare-platform** — 数据 API 服务，需在本地 8000 端口运行
-- **Chrome 浏览器** — `omp-web-operator` 连接本地浏览器进行网络搜索（可选，不可用时降级）
+- **Chrome 浏览器** — `omp web-operator` 连接本地浏览器进行网络搜索（可选，不可用时降级）
 - **web-operator Skill** — 安装在 `~/.agents/skills/web-operator/`
 - **jq** — JSON 处理
 - **curl** — API 调用

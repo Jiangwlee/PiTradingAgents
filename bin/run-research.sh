@@ -101,44 +101,64 @@ $STOCKS
 报告保存路径：$OUTPUT_FILE
 EOF
 else
-    # 默认模式：通过 C5 候选池接口一次获取（已含题材交叉、一字板过滤）
-    echo "正在获取候选股票数据..."
+    # 默认模式：多源合并（ashare 候选池 + THS 排行 + 问财涨幅榜）
+    echo "正在采集多源强势股数据..."
 
-    CANDIDATES_JSON=$(bash "$PROJECT_ROOT/scripts/fetch-stock-candidates.sh" "$TRADE_DATE" 5 10 2>/dev/null || echo '{"total":0,"candidates":[]}')
+    MERGE_JSON=$(uv run --script "$PROJECT_ROOT/scripts/merge-stock-candidates.py" "$TRADE_DATE" --top 30 2>"$TMP_DIR/merge.log" || echo '{}')
 
-    TOTAL=$(echo "$CANDIDATES_JSON" | jq '.total // 0' 2>/dev/null || echo 0)
-    CR_COUNT=$(echo "$CANDIDATES_JSON" | jq '.consecutive_red_count // 0' 2>/dev/null || echo 0)
-    NH_COUNT=$(echo "$CANDIDATES_JSON" | jq '.new_high_count // 0' 2>/dev/null || echo 0)
-    RESONANT_COUNT=$(echo "$CANDIDATES_JSON" | jq '[.candidates[] | select(.theme_resonance==true)] | length' 2>/dev/null || echo 0)
-    echo "  候选总数: ${TOTAL} 只（连阳${CR_COUNT} + 新高${NH_COUNT}）"
-    echo "  题材共振: ${RESONANT_COUNT} 只（已过滤一字板）"
+    TOTAL=$(echo "$MERGE_JSON" | jq '.summary.total_unique_stocks // 0' 2>/dev/null || echo 0)
+    SELECTED=$(echo "$MERGE_JSON" | jq '.selected_stocks | length' 2>/dev/null || echo 0)
+    CONCEPT_TOP=$(echo "$MERGE_JSON" | jq -r '[.concept_distribution[:3][] | .concept] | join(", ")' 2>/dev/null || echo "")
 
-    CANDIDATES=$(echo "$CANDIDATES_JSON" | jq '.candidates' 2>/dev/null || echo "[]")
+    # 打印采集日志
+    if [[ -f "$TMP_DIR/merge.log" ]]; then
+        cat "$TMP_DIR/merge.log"
+    fi
+    echo "  精选候选: ${SELECTED} 只（从 ${TOTAL} 只中筛出）"
+    echo "  热门概念: ${CONCEPT_TOP}"
+
+    # 精简概念分布：只保留概念名/数量/占比/平均涨幅，去掉完整 stocks 列表（节省 token）
+    CONCEPT_DIST=$(echo "$MERGE_JSON" | jq '[.concept_distribution[] | {concept, stock_count, concentration_pct, avg_gain_60d, avg_gain_120d, top3: [.stocks[:3][] | .name]}]' 2>/dev/null || echo "[]")
+    SELECTED_STOCKS=$(echo "$MERGE_JSON" | jq '.selected_stocks' 2>/dev/null || echo "[]")
 
     cat > "$PROMPT_FILE" << EOF
 模式：默认研究
 交易日期：$TRADE_DATE
 
-候选池已由 ashare-platform 完成以下处理：
-- 合并连阳（≥5天）和历史新高两个来源
-- 过滤上一交易日为一字板的股票
-- 交叉主流题材 Top 10，标注 theme_resonance
+## 数据来源
+
+候选池由程序从 5 个数据源自动合并、去重、交叉评分后精选：
+- ashare-platform：连阳（≥5天）+ 历史新高（已过滤一字板、交叉主流题材）
+- 同花顺排行：连续上涨、持续放量、量价齐升
+- 问财涨幅榜：60日/120日/240日 Top 50
+
+## 概念/板块强度分布（程序从 ${TOTAL} 只上榜股中聚合）
+
+以下概念在多个强势股中集中出现，代表板块级走强信号：
+
+$CONCEPT_DIST
+
+## 精选候选池（共 ${SELECTED} 只，按多源命中数+涨幅排序）
 
 字段说明：
-- source: consecutive_red=连阳来源, new_high=历史新高, both=同时命中
-- consecutive_up_days/period_gain_pct/bars: 连阳结构（连阳股）
-- prev_high/prev_high_date/change_pct_today: 历史新高信息（新高股）
-- primary_theme/primary_theme_rank/primary_theme_cycle_hint: 关联主流题材
-- theme_resonance: true=主题材在 Top 10 中（题材共振）
-- prev_day_yizi: true=上一交易日为一字板（已默认过滤）
+- hit_count: 命中数据源个数（越高越强）
+- sources: 命中的数据源列表
+- gain_60d/gain_120d/gain_240d: 问财涨幅榜数据（%）
+- consecutive_up_days: THS 连续上涨天数
+- volume_up_days: THS 持续放量天数
+- volume_price_up_days: THS 量价齐升天数
+- primary_theme: ashare-platform 关联主流题材
+- top_concepts: 该股关联的热门概念（已过滤噪音，仅保留在上榜股中有聚集效应的）
 
-## 候选池（共 ${TOTAL} 只）
+$SELECTED_STOCKS
 
-$CANDIDATES
+## 研究要求
 
-请按照 5 轮分层淘汰研究框架，对以上候选股票进行系统研究，输出完整分析报告。
-优先关注 theme_resonance=true 的股票（共振票优先进入深度研究）。
-报告保存路径：$OUTPUT_FILE
+1. 按照 5 轮分层淘汰研究框架进行系统研究
+2. 优先关注 hit_count ≥ 3 的多源共振股
+3. 结合概念分布判断板块趋势：个股走强是板块共振还是个股独立行情
+4. 对多周期涨幅榜同时上榜的股票（60d+120d+240d），重点评估当前位置（主升 vs 高潮）
+5. 报告保存路径：$OUTPUT_FILE
 EOF
 fi
 
@@ -150,7 +170,7 @@ echo "交易日期: $TRADE_DATE"
 if [[ -n "$STOCKS" ]]; then
     echo "研究模式: 指定股票（$STOCKS）"
 else
-    echo "研究模式: 默认（5连阳+历史新高，题材共振优先）"
+    echo "研究模式: 默认（多源合并：ashare+THS+问财，概念聚合）"
 fi
 echo "输出文件: $OUTPUT_FILE"
 echo "输出模式: $MODE"
@@ -158,7 +178,7 @@ echo "=============================================="
 echo ""
 
 export MODEL_OVERRIDE
-PI_JSON_LOG="$TMP_DIR/research.jsonl" run_agent_node "$MODE" "个股研究" "$OUTPUT_FILE" "$AGENT_MD" "@$PROMPT_FILE"
+EXTRA_SKILLS="$HOME/.agents/skills/web-operator" PI_JSON_LOG="$TMP_DIR/research.jsonl" run_agent_node "$MODE" "个股研究" "$OUTPUT_FILE" "$AGENT_MD" "@$PROMPT_FILE"
 
 if [[ "$MODE" != "interactive" && ! -s "$OUTPUT_FILE" ]]; then
     echo "[错误] Agent 未生成报告文件: $OUTPUT_FILE" >&2

@@ -564,25 +564,47 @@ if should_run_stage 3 || should_run_stage 4; then
 
 echo ""
 echo "=== 阶段 3.5: 个股深度研究 ==="
-echo "[研究员] 获取候选池并执行五维度分析..."
+echo "[研究员] 多源采集 + 概念聚合 + 五维度分析..."
 
 STOCK_RESEARCH_FILE="$REPORT_DIR/08-stock-research.md"
 RESEARCHER_PROMPT="$TMP_DIR/researcher-prompt.txt"
 
-# 获取 C5 候选池（已含题材交叉、一字板过滤）
-CANDIDATES_JSON=$(bash "$PROJECT_ROOT/scripts/fetch-stock-candidates.sh" "$TRADE_DATE" 5 10 2>/dev/null \
-    || echo '{"trade_date":"'$TRADE_DATE'","total":0,"candidates":[]}')
+# 多源合并：ashare 候选池 + THS 排行 + 问财涨幅榜 → 概念聚合 → 精选 Top 30
+MERGE_JSON=$(uv run --script "$PROJECT_ROOT/scripts/merge-stock-candidates.py" "$TRADE_DATE" --top 30 2>"$TMP_DIR/merge.log" \
+    || echo '{}')
 
-TOTAL=$(echo "$CANDIDATES_JSON" | jq '.total // 0' 2>/dev/null || echo 0)
-RESONANT=$(echo "$CANDIDATES_JSON" | jq '[.candidates[] | select(.theme_resonance==true)] | length' 2>/dev/null || echo 0)
-echo "  候选总数: ${TOTAL} 只，题材共振: ${RESONANT} 只"
+# 打印采集日志
+if [[ -f "$TMP_DIR/merge.log" ]]; then
+    cat "$TMP_DIR/merge.log"
+fi
+
+TOTAL=$(echo "$MERGE_JSON" | jq '.summary.total_unique_stocks // 0' 2>/dev/null || echo 0)
+SELECTED=$(echo "$MERGE_JSON" | jq '.selected_stocks | length' 2>/dev/null || echo 0)
+CONCEPT_TOP=$(echo "$MERGE_JSON" | jq -r '[.concept_distribution[:3][] | .concept] | join(", ")' 2>/dev/null || echo "")
+echo "  精选候选: ${SELECTED} 只（从 ${TOTAL} 只中筛出）"
+echo "  热门概念: ${CONCEPT_TOP}"
+
+# 精简概念分布：只保留概念名/数量/占比/平均涨幅，去掉完整 stocks 列表（节省 token）
+CONCEPT_DIST=$(echo "$MERGE_JSON" | jq '[.concept_distribution[] | {concept, stock_count, concentration_pct, avg_gain_60d, avg_gain_120d, top3: [.stocks[:3][] | .name]}]' 2>/dev/null || echo "[]")
+SELECTED_STOCKS=$(echo "$MERGE_JSON" | jq '.selected_stocks' 2>/dev/null || echo "[]")
 
 {
     echo "交易日期：$TRADE_DATE"
     echo ""
-    echo "## 候选池（共 ${TOTAL} 只，题材共振 ${RESONANT} 只）"
+    echo "## 数据来源"
     echo ""
-    echo "$CANDIDATES_JSON" | jq '.candidates' 2>/dev/null || echo "[]"
+    echo "候选池由程序从 5 个数据源自动合并、去重、交叉评分后精选："
+    echo "- ashare-platform：连阳（≥5天）+ 历史新高（已过滤一字板、交叉主流题材）"
+    echo "- 同花顺排行：连续上涨、持续放量、量价齐升"
+    echo "- 问财涨幅榜：60日/120日/240日 Top 50"
+    echo ""
+    echo "## 概念/板块强度分布（程序从 ${TOTAL} 只上榜股中聚合）"
+    echo ""
+    echo "$CONCEPT_DIST"
+    echo ""
+    echo "## 精选候选池（共 ${SELECTED} 只，按多源命中数+涨幅排序）"
+    echo ""
+    echo "$SELECTED_STOCKS"
     echo ""
     echo "## 题材分析报告（02-theme-report.md）"
     echo ""
