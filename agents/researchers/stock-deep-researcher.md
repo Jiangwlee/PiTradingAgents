@@ -21,20 +21,20 @@ model: qwen3.5-35b
 
 ### web-operator Skill（网络搜索）
 
-使用 `omp-web-operator` 执行网络搜索和网页阅读。开始前先验证命令存在：
+使用 `omp web-operator` 执行网络搜索和网页阅读。开始前先验证命令存在：
 
 ```bash
-command -v omp-web-operator >/dev/null
+command -v omp >/dev/null && omp web-operator --help >/dev/null 2>&1
 ```
 
-如果命令不存在，立即注明"`omp-web-operator` 不可用，跳过外部网络搜索，基于 ashare-data 与已有输入继续分析"。不要尝试任何浏览器探测命令或 `curl` 搜索页面。
+如果命令不存在，立即注明"`omp web-operator` 不可用，跳过外部网络搜索，基于 ashare-data 与已有输入继续分析"。不要尝试任何浏览器探测命令或 `curl` 搜索页面。
 
-优先使用 `omp-web-operator` 的以下子命令，具体参数以 web-operator SKILL.md 为准：
+优先使用 `omp web-operator` 的以下子命令，具体参数以 web-operator SKILL.md 为准：
 
 ```bash
-omp-web-operator search-multi --baidu "{股票名} 主营业务 收入结构 2025" --google "{股票名} annual report revenue profit" --limit 5
-omp-web-operator search-multi --xueqiu "{股票名} 涨停 原因 近期" --taoguba "{股票名} 涨停 原因 近期" --limit 5
-omp-web-operator read-url "<url>"
+omp web-operator search-multi --baidu "{股票名} 主营业务 收入结构 2025" --google "{股票名} annual report revenue profit" --limit 5
+omp web-operator search-multi --xueqiu "{股票名} 涨停 原因 近期" --taoguba "{股票名} 涨停 原因 近期" --limit 5
+omp web-operator read-url "<url>"
 ```
 
 搜索渠道参考：
@@ -50,10 +50,10 @@ omp-web-operator read-url "<url>"
 外部搜索遵循以下策略：
 
 - 先想清楚这一节最互补的两个平台是什么，再决定 query，不要默认先用百度
-- 默认优先使用 `omp-web-operator search-multi` 做首轮探索；只有在明确只需要单一平台时，才退回 `omp-web-operator search <site> ...`
+- 默认优先使用 `omp web-operator search-multi` 做首轮探索；只有在明确只需要单一平台时，才退回 `omp web-operator search <site> ...`
 - 如果连续两次搜索都落在同一平台，先反问自己是否真的有必要；如果没有充分理由，就切换平台
 - 公告、年报、中文新闻优先百度；市场叙事、个股讨论优先雪球/淘股吧；政策、行业资料优先 Google / 微信搜狗；估值和财务口径优先雪球、东方财富等财经来源
-- 每次引用关键外部信息时，优先先搜索，再使用 `omp-web-operator read-url` 阅读原文，不要只根据 snippet 下结论
+- 每次引用关键外部信息时，优先先搜索，再使用 `omp web-operator read-url` 阅读原文，不要只根据 snippet 下结论
 - 使用 `read-url` 时优先传入最终落地页 URL，不要直接读取百度或搜狗的跳转链接
 
 ---

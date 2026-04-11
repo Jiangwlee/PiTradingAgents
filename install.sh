@@ -80,17 +80,31 @@ check_dependencies() {
 # 克隆或更新代码
 clone_or_update() {
     info "准备代码..."
-    
-    if [[ -d "$INSTALL_DIR/.git" ]]; then
-        # 已存在，执行更新
+
+    # 检测是否从本地 checkout 运行（install.sh 所在目录有 .git）
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    if [[ -d "$SCRIPT_DIR/.git" && "$SCRIPT_DIR" != "$INSTALL_DIR" ]]; then
+        # 本地开发目录运行，rsync 到安装目录
+        info "检测到本地开发目录: $SCRIPT_DIR，同步到 $INSTALL_DIR ..."
+        mkdir -p "$INSTALL_DIR"
+        rsync -a --delete \
+            --exclude '.git' \
+            --exclude '.venv' \
+            --exclude '__pycache__' \
+            --exclude 'github/' \
+            "$SCRIPT_DIR/" "$INSTALL_DIR/"
+        success "本地代码已同步到 $INSTALL_DIR"
+    elif [[ -d "$INSTALL_DIR/.git" ]]; then
+        # 安装目录已存在 git repo，执行更新
         info "检测到现有安装，执行更新..."
         cd "$INSTALL_DIR"
         git pull origin main
         success "代码已更新"
     else
-        # 全新安装
+        # 全新远程安装
         info "从 GitHub 克隆代码..."
-        rm -rf "$INSTALL_DIR"  # 清理可能存在的旧目录
+        rm -rf "$INSTALL_DIR"
         git clone "https://github.com/$GITHUB_REPO.git" "$INSTALL_DIR"
         success "代码已克隆到 $INSTALL_DIR"
     fi

@@ -187,7 +187,7 @@ PiTradingAgents/
 | 属性 | 值 |
 |------|------|
 | 职责 | 对 Top N 题材进行深度研究，挖掘真实驱动力、识别最符合题材方向的核心个股 |
-| 输入数据 | ashare API（题材池 + 成分股）+ `omp-web-operator`（Google/淘股吧/雪球） |
+| 输入数据 | ashare API（题材池 + 成分股）+ `omp web-operator`（Google/淘股吧/雪球） |
 | 输出 | 每个题材的深度研究报告（驱动力 + 核心个股 + 市场叙事） |
 | Skill 模式 | Pipeline（10 轮迭代研究，结构化模板强制填写） |
 | 依赖 | 需要 Chrome 浏览器运行 |
@@ -217,9 +217,9 @@ PiTradingAgents/
 
 | 渠道 | 搜索脚本 | 阅读脚本 |
 |------|---------|---------|
-| Google | `omp-web-operator search google "<query>" [limit]` | `omp-web-operator read-url "<url>"` |
-| 淘股吧 | `omp-web-operator search taoguba "<query>" [limit]` | `omp-web-operator open-post taoguba "<url>"` |
-| 雪球 | `omp-web-operator search xueqiu "<query>" [limit]` | `omp-web-operator open-post xueqiu "<url>"` |
+| Google | `omp web-operator search google "<query>" [limit]` | `omp web-operator read-url "<url>"` |
+| 淘股吧 | `omp web-operator search taoguba "<query>" [limit]` | `omp web-operator open-post taoguba "<url>"` |
+| 雪球 | `omp web-operator search xueqiu "<query>" [limit]` | `omp web-operator open-post xueqiu "<url>"` |
 
 **10 轮研究模板**（每个题材）：
 
@@ -606,7 +606,7 @@ curl -sf "$BASE_URL/theme-emotion/daily?trade_date=$TRADE_DATE&limit=$LIMIT&sort
 
 ### 5.2 web-operator Skill（复用）
 
-催化剂分析师复用现有的 `~/.agents/skills/web-operator/` skill，通过 `omp-web-operator` 调用站点工作流：
+催化剂分析师复用现有的 `~/.agents/skills/web-operator/` skill，通过 `omp web-operator` 调用站点工作流：
 
 | 渠道 | 脚本 | 用途 |
 |------|------|------|
@@ -626,7 +626,7 @@ curl -sf "$BASE_URL/theme-emotion/daily?trade_date=$TRADE_DATE&limit=$LIMIT&sort
 | Agent 框架 | Pi（.md 格式 agent 定义）|
 | 编排方式 | Shell 脚本 (Conductor) |
 | 数据接口 | ashare-platform HTTP API (localhost:8000) |
-| 深度研究 | web-operator Skill / `omp-web-operator` (需浏览器调试环境，催化剂分析师使用) |
+| 深度研究 | web-operator Skill / `omp web-operator` (需浏览器调试环境，催化剂分析师使用) |
 | 运行环境 | 当前主机本地执行 |
 | 运行频率 | 手动触发（shell 脚本） |
 

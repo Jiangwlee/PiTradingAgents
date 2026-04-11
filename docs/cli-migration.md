@@ -187,7 +187,7 @@ cd ~/ashare-platform
 
 **解决方案：**
 ```bash
-# `omp-web-operator` 不可用时，催化剂分析师会降级处理
+# `omp web-operator` 不可用时，催化剂分析师会降级处理
 # 其他功能不受影响
 pi-trader run 2026-03-24
 ```

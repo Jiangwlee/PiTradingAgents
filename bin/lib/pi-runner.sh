@@ -82,6 +82,8 @@ run_agent_node() {
 
     local pi_args=(
         --no-session
+        --no-extensions
+        --no-skills
         --model "$model"
         --tools "$tools"
         --system-prompt "$system_prompt"

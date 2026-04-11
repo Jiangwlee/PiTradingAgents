@@ -225,14 +225,14 @@ cd ~/ashare-platform
 ### 问题：web-operator 不可用
 
 **解决方案：**
-`omp-web-operator` 不可用时，催化剂分析师会自动降级处理，其他功能不受影响：
+`omp web-operator` 不可用时，催化剂分析师会自动降级处理，其他功能不受影响：
 ```bash
 pi-trader run 2026-03-24
 ```
 
 如需启用深度研究功能：
 ```bash
-# 安装 web-operator Skill 并确保 `omp-web-operator` 可执行
+# 安装 web-operator Skill 并确保 `omp web-operator` 可执行
 omp install skill web-operator
 ```
 
