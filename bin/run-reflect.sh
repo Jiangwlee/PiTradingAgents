@@ -60,11 +60,12 @@ _get_recent_trade_dates() {
 # 给定参考日期，返回其前一个交易日
 _prev_trading_day() {
     local ref="$1"
-    python3 - "$ref" <<PY
+    python3 - "$ref" "$API_URL" <<'PY'
 import sys, json, urllib.request
 ref = sys.argv[1]
+api_url = sys.argv[2]
 try:
-    url = "${API_URL}/trade-dates/recent?days=10"
+    url = f"{api_url}/trade-dates/recent?days=10"
     with urllib.request.urlopen(url, timeout=5) as r:
         dates = json.loads(r.read())["trade_dates"]
     prev = [d for d in dates if d < ref]
@@ -175,12 +176,13 @@ PY
 }
 
 build_market_situation() {
-    python3 - <<PY
+    python3 - "$STATE_FILE" <<'PY'
 import json
 import re
+import sys
 from pathlib import Path
 
-state = json.loads(Path("$STATE_FILE").read_text(encoding='utf-8'))
+state = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
 emotion_report = state.get("reports", {}).get("01-emotion-report.md", "")
 theme = (state.get("top_themes") or [{}])[0]
 theme_name = theme.get("name", "无主线题材")
@@ -216,12 +218,13 @@ PY
 
 build_role_context() {
     local role="$1"
-    python3 - <<PY
+    python3 - "$STATE_FILE" "$role" <<'PY'
 import json
+import sys
 from pathlib import Path
 
-state = json.loads(Path("$STATE_FILE").read_text(encoding='utf-8'))
-role = "$role"
+state = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+role = sys.argv[2]
 
 if role == "bull":
     points = state.get("bull_key_points", [])[:2]
@@ -267,14 +270,15 @@ build_role_input() {
 build_validation_input() {
     local role="$1"
     local output_file="$2"
-    python3 - <<PY > "$output_file"
+    python3 - "$role" "$STATE_FILE" "$SIGNALS_FILE" "$ACTUAL_DATA_FILE" <<'PY' > "$output_file"
 import json
+import sys
 from pathlib import Path
 
-role = "$role"
-state = json.loads(Path("$STATE_FILE").read_text(encoding='utf-8'))
-signals = json.loads(Path("$SIGNALS_FILE").read_text(encoding='utf-8'))
-actual = json.loads(Path("$ACTUAL_DATA_FILE").read_text(encoding='utf-8'))
+role = sys.argv[1]
+state = json.loads(Path(sys.argv[2]).read_text(encoding='utf-8'))
+signals = json.loads(Path(sys.argv[3]).read_text(encoding='utf-8'))
+actual = json.loads(Path(sys.argv[4]).read_text(encoding='utf-8'))
 
 result = {
     "signals": signals,
@@ -488,11 +492,12 @@ for item in "${ROLE_OUTPUTS[@]}"; do
     file="${item#*:}"
     extract_file="$TMP_DIR/extract-${role}.json"
     "$PROJECT_ROOT/bin/extract-reflections.py" "$file" "$DECISION_DATE" "$role" > "$extract_file"
-    python3 - <<PY
+    python3 - "$BATCH_FILE" "$extract_file" <<'PY'
 import json
+import sys
 from pathlib import Path
-batch_path = Path("$BATCH_FILE")
-extract_path = Path("$extract_file")
+batch_path = Path(sys.argv[1])
+extract_path = Path(sys.argv[2])
 batch = json.loads(batch_path.read_text(encoding='utf-8'))
 if extract_path.exists() and extract_path.read_text(encoding='utf-8').strip():
     batch.extend(json.loads(extract_path.read_text(encoding='utf-8')))
@@ -501,13 +506,14 @@ PY
 done
 
 REFLECTION_OUTPUT="$REPORT_DIR/08-reflection.md"
-python3 - <<PY > "$REFLECTION_OUTPUT"
+python3 - "$REFLECTION_DIR" <<'PY' > "$REFLECTION_OUTPUT"
 import json
+import sys
 from pathlib import Path
 
 result = {"reflections": []}
 for role in ["bull", "bear", "judge", "trader"]:
-    payload = json.loads(Path("$REFLECTION_DIR").joinpath(f"{role}.json").read_text(encoding='utf-8'))
+    payload = json.loads(Path(sys.argv[1]).joinpath(f"{role}.json").read_text(encoding='utf-8'))
     payload["role"] = role
     result["reflections"].append(payload)
 
@@ -543,11 +549,12 @@ if [[ -n "$LIBRARY_FILE" && -f "$LIBRARY_FILE" ]]; then
     TRADER_REFLECTION="$REFLECTION_DIR/trader.json"
     SCORE_UPDATES_FILE="$REPORT_DIR/score-updates.json"
 
-    python3 - <<PY > "$SCORE_UPDATES_FILE" 2>/dev/null || echo '{"positive":{},"avoid":{},"new_signals":[]}' > "$SCORE_UPDATES_FILE"
+    python3 - "$TRADER_REFLECTION" <<'PY' > "$SCORE_UPDATES_FILE" 2>/dev/null || echo '{"positive":{},"avoid":{},"new_signals":[]}' > "$SCORE_UPDATES_FILE"
 import json
+import sys
 from pathlib import Path
 
-trader_path = Path("$TRADER_REFLECTION")
+trader_path = Path(sys.argv[1])
 if not trader_path.exists():
     print('{"positive":{},"avoid":{},"new_signals":[]}')
     exit()

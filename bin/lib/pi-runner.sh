@@ -188,10 +188,11 @@ prev_trade_date() {
     fi
     # 回退：跳过周末
     python3 -c "
+import sys
 from datetime import datetime, timedelta
-d = datetime.strptime('$ref', '%Y-%m-%d') - timedelta(days=1)
+d = datetime.strptime(sys.argv[1], '%Y-%m-%d') - timedelta(days=1)
 while d.weekday() >= 5:
     d -= timedelta(days=1)
 print(d.strftime('%Y-%m-%d'))
-"
+" "$ref"
 }

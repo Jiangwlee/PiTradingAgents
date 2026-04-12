@@ -22,7 +22,7 @@ def default_memory_dir() -> str:
     pita_data_dir = os.environ.get("PITA_DATA_DIR")
     if pita_data_dir:
         return os.path.join(pita_data_dir, "memory")
-    return os.path.join(os.path.expanduser("~"), ".local", "share", "PiTradingAgents", "data", "memory")
+    return os.path.join(os.path.expanduser("~"), ".local", "share", "PiTradingAgents", "memory")
 
 
 class PersistentMemory:

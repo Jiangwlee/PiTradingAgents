@@ -14,7 +14,9 @@ PiTradingAgents/
 │   │   ├── trend-analyst.md            # 趋势分析师 — 筛选核心交易标的
 │   │   └── catalyst-analyst.md         # 催化剂分析师 — 深度研究题材驱动力
 │   ├── researchers/
-│   │   └── stock-researcher.md         # 个股研究员 — 5轮分层淘汰深度研究走强个股
+│   │   ├── stock-researcher.md         # 个股研究员 — 5轮分层淘汰深度研究走强个股
+│   │   ├── stock-deep-researcher.md    # 深度研究员 — 指定股票跳过筛选直接深度研究
+│   │   └── stock-researcher-pipeline.md # Pipeline 研究员 — 基于题材报告五维度评估
 │   ├── debaters/
 │   │   ├── bull-debater.md             # 看多辩手
 │   │   └── bear-debater.md             # 看空辩手
@@ -29,9 +31,7 @@ PiTradingAgents/
 │
 ├── skills/
 │   └── ashare-data/                    # 数据采集 Skill
-│       ├── SKILL.md
-│       ├── scripts/                    # curl wrapper 脚本，调用 ashare-platform API
-│       └── references/                 # 情绪周期理论、API 文档
+│       └── SKILL.md
 │
 ├── bin/
 │   ├── pi-trader                       # CLI 入口（uv run --script + Typer）
@@ -217,11 +217,11 @@ model: qwen3.5-35b
 # 运行完整分析 Pipeline
 pi-trader run 2026-03-21
 
-# Verbose 模式（实时查看每个 Agent 的推理输出）
-pi-trader run -v 2026-03-21
+# Stream 模式（实时查看每个 Agent 的推理输出）
+pi-trader run --mode stream 2026-03-21
 
 # 指定阶段和模型
-pi-trader run -v -s 3 --model qwen3.5-35b 2026-03-21
+pi-trader run --mode stream -s 3 --model qwen3.5-35b 2026-03-21
 
 # 复盘（对比决策日预测与次日实际结果，生成反思并写入记忆）
 pi-trader reflect 2026-03-20

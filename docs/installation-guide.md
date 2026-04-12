@@ -11,12 +11,9 @@ PiTradingAgents 遵循 Linux 最佳实践，将**应用代码**、**运行时数
 ```
 ~/.PiTradingAgents/                    # 应用根目录（代码）
 ├── bin/                                # 可执行脚本
-│   ├── pi-trader                      # CLI 入口（Python）
+│   ├── pi-trader                      # CLI 入口（uv run --script + Typer）
 │   ├── run-analysis.sh                # 分析 Pipeline
 │   └── run-reflect.sh                 # 复盘 Pipeline
-├── cli/                                # Python 包
-│   ├── __init__.py
-│   └── app.py
 ├── scripts/                            # 数据获取脚本
 │   ├── fetch-market-emotion.sh
 │   ├── fetch-theme-pool.sh
@@ -26,18 +23,18 @@ PiTradingAgents 遵循 Linux 最佳实践，将**应用代码**、**运行时数
 │   ├── debaters/
 │   ├── judges/
 │   └── ...
-└── .venv/                              # Python 虚拟环境
-    ├── bin/python3
-    └── lib/python3.x/site-packages/
+└── skills/                             # Skill 定义
+    └── ashare-data/SKILL.md
 
 ~/.local/share/PiTradingAgents/         # 运行时数据（XDG_DATA_HOME）
-├── data/
-│   ├── reports/YYYY-MM-DD/            # 每日分析报告
-│   └── memory/                         # BM25 记忆库
-│       ├── bull.jsonl
-│       ├── bear.jsonl
-│       ├── judge.jsonl
-│       └── trader.jsonl
+├── reports/YYYY-MM-DD/                 # 每日分析报告
+├── memory/                             # BM25 记忆库
+│   ├── bull.jsonl
+│   ├── bear.jsonl
+│   ├── judge.jsonl
+│   └── trader.jsonl
+├── research/                           # 个股深度研究输出
+└── signals/                            # 复盘信号数据
 
 ~/.config/PiTradingAgents/              # 用户配置（XDG_CONFIG_HOME）
 └── config.env                          # 环境变量配置
@@ -104,13 +101,13 @@ cd PiTradingAgents
 ```
 
 安装脚本将：
-1. 检查系统依赖（python3, git）
+1. 检查系统依赖（python3, uv, git, curl）
 2. 创建标准目录结构
-3. 复制代码到 `~/.PiTradingAgents/`
-4. 创建 Python 虚拟环境
-5. 安装依赖（typer, rich, requests）
-6. 创建命令入口 `~/.local/bin/pi-trader`
-7. 生成配置文件
+3. 同步代码到 `~/.PiTradingAgents/`
+4. 创建命令入口 `~/.local/bin/pi-trader`（symlink）
+5. 生成配置文件
+
+注意：Python 依赖由各脚本通过 `uv run --script` 的 inline dependencies 自管理，无需手动安装。
 
 ### 3. 确保 PATH 配置
 
@@ -227,15 +224,14 @@ chmod -R u+rw ~/.local/share/PiTradingAgents/
 chmod -R u+rw ~/.config/PiTradingAgents/
 ```
 
-### 问题：Python 模块导入错误
+### 问题：Python 脚本运行报错
 
 ```bash
-# 检查虚拟环境
-ls -la ~/.PiTradingAgents/.venv/bin/python3
+# 确保 uv 已安装
+uv --version
 
-# 重新安装依赖
-cd ~/Projects/PiTradingAgents
-./install.sh --upgrade
+# 如果未安装
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ### 问题：找不到 install.sh
@@ -274,7 +270,7 @@ curl http://localhost:8000/health
 
 | 场景 | 代码位置 | 命令 | 用途 |
 |------|---------|------|------|
-| **开发** | `~/Projects/PiTradingAgents/` | `python3 -m cli.app` | 写代码、调试 |
+| **开发** | `~/Projects/PiTradingAgents/` | `bin/pi-trader` | 写代码、调试 |
 | **部署** | `~/.PiTradingAgents/` | `pi-trader` | 日常使用 |
 
 ### 开发模式
@@ -285,10 +281,10 @@ curl http://localhost:8000/health
 cd ~/Projects/PiTradingAgents
 
 # 直接运行（不通过安装后的命令）
-python3 -m cli.app run 2026-03-24
+bin/pi-trader run 2026-03-24
 
 # 修改代码后，重新安装以生效
-./install.sh --upgrade
+./install.sh
 ```
 
 ### 部署模式
@@ -297,14 +293,13 @@ python3 -m cli.app run 2026-03-24
 
 ```bash
 pi-trader run 2026-03-24
-pi-trader insight 2026-03-20
+pi-trader reflect 2026-03-20
 pi-trader data emotion 2026-03-24
 ```
 
 ## 相关文档
 
 - [CLI 使用指南](./cli-guide.md) - 完整的命令参考
-- [迁移指南](./cli-migration.md) - 从旧版迁移的说明
 - [更新日志](./CHANGELOG.md) - 版本历史
 
 ---

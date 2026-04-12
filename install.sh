@@ -127,14 +127,16 @@ init_directories() {
     info "初始化数据目录..."
     
     # 创建数据目录
-    mkdir -p "$DATA_DIR/data/reports"
-    mkdir -p "$DATA_DIR/data/memory"
-    
+    mkdir -p "$DATA_DIR/reports"
+    mkdir -p "$DATA_DIR/memory"
+    mkdir -p "$DATA_DIR/research"
+    mkdir -p "$DATA_DIR/signals"
+
     # 创建记忆文件
-    touch "$DATA_DIR/data/memory/bull.jsonl"
-    touch "$DATA_DIR/data/memory/bear.jsonl"
-    touch "$DATA_DIR/data/memory/judge.jsonl"
-    touch "$DATA_DIR/data/memory/trader.jsonl"
+    touch "$DATA_DIR/memory/bull.jsonl"
+    touch "$DATA_DIR/memory/bear.jsonl"
+    touch "$DATA_DIR/memory/judge.jsonl"
+    touch "$DATA_DIR/memory/trader.jsonl"
     
     # 创建配置目录
     mkdir -p "$CONFIG_DIR"

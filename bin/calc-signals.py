@@ -16,8 +16,7 @@ import sys
 import re
 import urllib.request
 import urllib.error
-from urllib.parse import urlencode, quote
-from datetime import datetime, timedelta
+from urllib.parse import urlencode
 import os
 
 API_BASE_URL = os.environ.get("ASHARE_API_URL", "http://127.0.0.1:8000")
@@ -181,8 +180,6 @@ def calc_signal_a(recommended_stocks, eval_date):
             stock_result['note'] = '无法获取数据'
         else:
             total_count += 1
-            signal_lower = signal.lower()
-            
             # 判定规则
             is_correct = False
             if '买入' in signal or '加仓' in signal:

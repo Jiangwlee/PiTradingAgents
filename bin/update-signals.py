@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["requests"]
+# dependencies = []
 # ///
 """
 update-signals.py — 信号库评分更新、条件轮换、选股原则生成

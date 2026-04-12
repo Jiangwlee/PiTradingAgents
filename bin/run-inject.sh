@@ -158,7 +158,7 @@ fi
 
 # ── 步骤 4: 检查 verdict ─────────────────────────────────────────────────────
 
-VERDICT=$(python3 -c "import json; d=json.load(open('$RESULT_FILE')); print(d.get('verdict',''))")
+VERDICT=$(python3 -c "import json, sys; d=json.load(open(sys.argv[1])); print(d.get('verdict',''))" "$RESULT_FILE")
 
 if [[ "$VERDICT" == "reject" ]]; then
     echo ""
@@ -166,13 +166,13 @@ if [[ "$VERDICT" == "reject" ]]; then
     echo "✗ 经验注入被拒绝"
     echo "=============================================="
     python3 -c "
-import json
-d = json.load(open('$RESULT_FILE'))
+import json, sys
+d = json.load(open(sys.argv[1]))
 print()
 print('拒绝理由:', d.get('reason', '未知'))
 print()
 print('研究摘要:', d.get('research_summary', '无'))
-"
+" "$RESULT_FILE"
     exit 1
 fi
 
@@ -183,7 +183,7 @@ fi
 
 # ── 步骤 5: 校验 role 并写入记忆 ─────────────────────────────────────────────
 
-RESULT_ROLE=$(python3 -c "import json; d=json.load(open('$RESULT_FILE')); print(d.get('role',''))")
+RESULT_ROLE=$(python3 -c "import json, sys; d=json.load(open(sys.argv[1])); print(d.get('role',''))" "$RESULT_FILE")
 
 case "$RESULT_ROLE" in
     bull|bear|judge|trader) ;;
@@ -196,15 +196,16 @@ esac
 
 TODAY=$(date +%Y-%m-%d)
 
-python3 - <<PY | "$PROJECT_ROOT/bin/memory.py" --data-dir "$MEMORY_DIR" store-batch
+python3 - "$RESULT_FILE" "$TODAY" "$EXPERIENCE_TEXT" <<'PY' | "$PROJECT_ROOT/bin/memory.py" --data-dir "$MEMORY_DIR" store-batch
 import json
+import sys
 
-result = json.load(open("$RESULT_FILE"))
+result = json.load(open(sys.argv[1]))
 
 record = {
     "role": result["role"],
-    "date": "$TODAY",
-    "situation": result.get("situation", "$EXPERIENCE_TEXT"),
+    "date": sys.argv[2],
+    "situation": result.get("situation", sys.argv[3]),
     "recommendation": result.get("recommendation", ""),
     "market_situation": result.get("market_situation", ""),
     "improvements": result.get("improvements", []),

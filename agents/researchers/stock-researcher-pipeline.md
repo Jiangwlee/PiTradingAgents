@@ -103,7 +103,7 @@ pi-trader data stock-themes <code> <trade_date>
 **关键**：从输入的 **题材分析报告**（02-theme-report.md）中找到该股 `primary_theme` 对应的章节，直接引用其中的：
 - 题材核心催化剂（政策文件/事件细节）
 - 叙事演变路径（从 A→B→C 的逻辑深化）
-- 题材阶段（start/ferment/main_rise/climax/bad_divergence）和持续性判断
+- 题材阶段（early/ferment/main_rise/climax/middle/late）和持续性判断
 
 补充 stock-themes 返回的：
 - 该股在题材中的角色（leader/core/member）
@@ -113,8 +113,8 @@ pi-trader data stock-themes <code> <trade_date>
 - `main_rise` 阶段 + role=leader/core → 题材面 A
 - `ferment` 阶段 + 排名上升 → 题材面 B+
 - `ferment` 阶段 + 排名持平/下降 → 题材面 B
-- `start` 阶段 + role=leader/core → 题材面 B+
-- `start` 阶段 + role=member → 题材面 B
+- `early` 阶段 + role=leader/core → 题材面 B+
+- `early` 阶段 + role=member → 题材面 B
 - 题材裁判在 06-theme-debate.md 中明确看好该题材 → 加一档（B→B+，B+→A）
 
 #### 维度 3 — 消息面

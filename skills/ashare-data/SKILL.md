@@ -89,8 +89,9 @@ pi-trader data emotion 2026-03-21
 
 ## Return Format
 
-- All list endpoints return a **JSON array** `[...]` directly — not a `{"data": [...]}` wrapper object.
+- Most list endpoints return a **JSON array** `[...]` directly — not a `{"data": [...]}` wrapper object.
 - Access elements with `.[0]`, `.[]` etc. Never use `.data`.
+- Exception: `new-high` returns `{"trade_date": "...", "count": N, "stocks": [...]}` — the script extracts `.stocks` automatically, so callers still receive a bare array.
 - The `theme_stage` field uses English codes. Translate to Chinese when writing reports:
 
 | API value | Chinese stage |

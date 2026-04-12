@@ -758,7 +758,7 @@ else
 fi
 if [[ -f "$FINAL_REPORT_FILE" ]]; then
     if bin/extract-picks.py "$FINAL_REPORT_FILE" > "$REPORT_DIR/picks.json" 2>/dev/null; then
-        PICKS_COUNT=$(python3 -c "import json; d=json.load(open('$REPORT_DIR/picks.json')); print(len(d.get('picks',[])))" 2>/dev/null || echo "?")
+        PICKS_COUNT=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(len(d.get('picks',[])))" "$REPORT_DIR/picks.json" 2>/dev/null || echo "?")
         echo "荐股已提取: $REPORT_DIR/picks.json（${PICKS_COUNT} 只）"
     else
         echo "[警告] 荐股数据提取失败"

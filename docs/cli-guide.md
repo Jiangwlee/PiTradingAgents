@@ -6,24 +6,18 @@
 
 **重要**: 本项目已完全移除旧的 `pita` 命令，请只使用 `pi-trader`。
 
-## 安装依赖
-
-```bash
-cd /home/bruce/Projects/PiTradingAgents
-uv pip install typer
-```
-
-## 运行安装脚本
+## 安装
 
 ```bash
 ./install.sh
 ```
 
 这将：
-- 安装 `pi-trader` 到 `~/.local/bin/pi-trader`
+- 创建 `~/.local/bin/pi-trader` 符号链接
 - 创建配置目录和数据目录
 - 初始化记忆文件
-- 检查 Typer 依赖
+
+Python 依赖由各脚本通过 `uv run --script` 自管理，无需手动安装。
 
 确保 `~/.local/bin` 在你的 PATH 中（通常在 `~/.bashrc` 中已配置）。
 
@@ -63,11 +57,10 @@ pi-trader run [OPTIONS] [DATE]
 **选项：**
 - `-m, --model TEXT`: 指定 LLM 模型名称
   - 支持：`qwen3.5-35b`, `qwen3.5-27b`, `kimi-k2p5`, `kimi-k2-thinking`
-- `--mode [text|stream|json|interactive]`: 运行模式
+- `--mode [text|stream|json]`: 运行模式
   - `text`: 默认，输出最终文本
   - `stream`: 人类可读流式输出；`run` 在并行阶段采用 workflow-safe stream，避免多 Agent 混流
   - `json`: 输出 JSON 事件流
-  - `interactive`: 进入 Pi TUI（当前仅 `research` 支持）
 - `-s, --stages TEXT`: 指定执行阶段，如 `'1,2,3'`；空 = 全部执行
 
 **示例：**
@@ -102,7 +95,7 @@ pi-trader reflect [OPTIONS] DATE
 ```
 
 **参数：**
-- `DATE`（必需）: 决策日期 (YYYY-MM-DD)
+- `DATE`（可选）: 决策日期 (YYYY-MM-DD)，16:00 后默认今天，之前默认前一交易日
 
 **选项：**
 - `-m, --model TEXT`: 指定 Reflector Agent 使用的 LLM 模型
@@ -130,10 +123,10 @@ pi-trader reflect --mode stream -m qwen3.5-35b 2026-03-20
 **记忆角色映射：**
 | 角色 | 记忆库 | 用途 |
 |------|--------|------|
-| bull | `data/memory/bull.jsonl` | 看多辩手历史教训 |
-| bear | `data/memory/bear.jsonl` | 看空辩手历史教训 |
-| judge | `data/memory/judge.jsonl` | 裁判历史教训 |
-| trader | `data/memory/trader.jsonl` | 投资经理历史教训 |
+| bull | `memory/bull.jsonl` | 看多辩手历史教训 |
+| bear | `memory/bear.jsonl` | 看空辩手历史教训 |
+| judge | `memory/judge.jsonl` | 裁判历史教训 |
+| trader | `memory/trader.jsonl` | 投资经理历史教训 |
 
 ### `data` - 市场数据查询
 
@@ -177,7 +170,6 @@ ASHARE_API_URL=http://127.0.0.1:8000
 [OK] command found: pi
 [OK] command found: jq
 [OK] command found: curl
-[OK] python venv: /home/bruce/Projects/PiTradingAgents/.venv/bin/python3
 [OK] data scripts: /home/bruce/Projects/PiTradingAgents/scripts
 [OK] ashare API reachable: http://127.0.0.1:8000
 ```
@@ -201,14 +193,6 @@ ASHARE_API_URL=http://127.0.0.1:8000
 | `ASHARE_API_URL` | `http://127.0.0.1:8000` | 行情 API 地址 |
 
 ## 故障排除
-
-### 问题：Typer 未找到
-
-**解决方案：**
-```bash
-cd /home/bruce/Projects/PiTradingAgents
-uv pip install typer
-```
 
 ### 问题：API 连接失败
 
@@ -291,9 +275,9 @@ pi-trader run -m kimi-k2-thinking 2026-03-24
 ### 参数解析
 Typer 自动处理参数顺序，以下命令完全等价：
 ```bash
-pi-trader run 2026-03-24 -m qwen3.5-35b -v
-pi-trader run -m qwen3.5-35b -v 2026-03-24
-pi-trader run -v -s 3 -m qwen3.5-35b 2026-03-24
+pi-trader run 2026-03-24 -m qwen3.5-35b --mode stream
+pi-trader run -m qwen3.5-35b --mode stream 2026-03-24
+pi-trader run --mode stream -s 3 -m qwen3.5-35b 2026-03-24
 ```
 
 ### 错误处理
@@ -302,24 +286,21 @@ pi-trader run -v -s 3 -m qwen3.5-35b 2026-03-24
 - 脚本执行失败会显示错误代码
 
 ### 日志输出
-- Verbose 模式 (`-v`) 会实时显示每个 Agent 的推理过程
+- Stream 模式 (`--mode stream`) 会实时显示每个 Agent 的推理过程
 - 输出带有颜色标记，便于区分不同角色
-- JSONL 格式的事件流可用于高级调试
+- JSON 模式 (`--mode json`) 的事件流可用于高级调试
 
 ## 开发说明
 
 如需修改 CLI 代码，编辑以下文件：
-- `/home/bruce/Projects/PiTradingAgents/cli/app.py` - Typer 应用主程序
-- `/home/bruce/Projects/PiTradingAgents/bin/pi-trader` - 入口脚本
+- `bin/pi-trader` - Typer 应用主程序（入口脚本）
 
 重新运行后无需重新安装，直接执行即可生效。
 
 ## 相关文档
 
-- [`docs/cli-migration.md`](./cli-migration.md) - CLI 重构说明
 - [`docs/CHANGELOG.md`](./CHANGELOG.md) - 版本更新日志
-- [`docs/design/agent-team-design.md`](../docs/design/agent-team-design.md) - Agent 团队设计
-- [`AGENTS.md`](../AGENTS.md) - 项目架构总览
+- [`docs/design/agent-team-design.md`](./design/agent-team-design.md) - Agent 团队设计
 
 ---
 

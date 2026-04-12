@@ -16,15 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Colorful output and formatted tables
   - Flexible argument order (options can appear before/after arguments)
   
-- **Command renaming**:
-  - `reflect` → `insight` (emphasizes self-evolution capability)
-  - Other commands: `run`, `data`, `doctor`
+- **Commands**: `run`, `reflect`, `data`, `doctor`
 
 - **Unified options** across all commands:
   - `--model, -m`: Specify LLM model
     - Supported: `qwen3.5-35b`, `qwen3.5-27b`, `kimi-k2p5`, `kimi-k2-thinking`
     - Auto-mapped to full provider IDs
-  - `--verbose, -v`: Verbose output mode
+  - `--mode`: Output mode (text/stream/json)
   - `--help, -h`: Show help information
 
 - **Stage selection** for `run` command:
@@ -33,16 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Documentation
 - `docs/cli-guide.md`: Complete usage guide for pi-trader CLI
-- `docs/cli-migration.md`: Migration guide and technical details
-- `docs/cli-testing.md`: Test report and verification results
 - `docs/CHANGELOG.md`: This changelog
 
 #### Installation
 - Enhanced `install.sh` with:
-  - Support for `pi-trader` command
-  - `--upgrade` flag for reinstallation
-  - Typer dependency check
-  - Better error messages and next steps guidance
+  - Support for `pi-trader` command (symlink to `bin/pi-trader`)
+  - Python 依赖由 `uv run --script` inline dependencies 自管理
 
 ### Changed
 
@@ -88,10 +82,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - web-operator support for deep research (optional)
 
 #### Commands
-- `pita run`: Run analysis pipeline
-- `pita reflect`: Run reflection/self-evolution pipeline
-- `pita data`: Query market data subcommands
-- `pita doctor`: System diagnostic tool
+- `pi-trader run`: Run analysis pipeline
+- `pi-trader reflect`: Run reflection/self-evolution pipeline
+- `pi-trader data`: Query market data subcommands
+- `pi-trader doctor`: System diagnostic tool
 
 #### Features
 - Configurable LLM models via environment variables
@@ -102,7 +96,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Infrastructure
 - Bash-based orchestration scripts
-- Python venv for dependencies (rank-bm25, jieba)
+- uv run --script for Python dependency management (rank-bm25, jieba)
 - Shell scripts as Skill layer for data fetching
 - Configuration management via config.env
 
@@ -118,32 +112,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 pita reflect 2026-03-20
 
 # New way (REQUIRED)
-pi-trader insight 2026-03-20
+pi-trader reflect 2026-03-20
 ```
 
 #### New Options Available
 ```bash
-# Before: Had to edit scripts manually to change model
-# After: Use --model option
+# Use --model option
 pi-trader run -m qwen3.5-35b 2026-03-24
 
-# Before: Always ran full pipeline
-# After: Can select specific stages
+# Select specific stages
 pi-trader run -s 3 2026-03-24
 ```
 
 #### Installation
 ```bash
-# Install pi-trader
-cd /home/bruce/Projects/PiTradingAgents
-uv pip install typer
+cd /path/to/PiTradingAgents
 ./install.sh
-```
-
-#### Dependencies
-```bash
-# Required for pi-trader
-uv pip install typer
 ```
 
 ---
