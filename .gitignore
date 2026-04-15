@@ -27,3 +27,6 @@ EOF
 JSONEOF
 PYEOF
 SCRIPT_EOF
+
+.agents/
+.claude/
