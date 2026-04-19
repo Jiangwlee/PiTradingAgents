@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # run-analysis.sh — Pipeline Conductor 编排脚本
-# 用法: run-analysis.sh [--mode text|stream|json] [-s 1,2,3] [-m MODEL] [YYYY-MM-DD]
+# 用法: run-analysis.sh [--mode text|stream|json] [-s 1,2,3,4,5,6] [-m MODEL] [YYYY-MM-DD]
 
 set -euo pipefail
 
@@ -57,7 +57,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -*)
             echo "未知选项: $1" >&2
-            echo "用法: $0 [--mode text|stream|json|interactive] [-s|--stages 1,2,3] [-m|--model MODEL] [YYYY-MM-DD]" >&2
+            echo "用法: $0 [--mode text|stream|json|interactive] [-s|--stages 1,2,3,4,5,6] [-m|--model MODEL] [YYYY-MM-DD]" >&2
             exit 1
             ;;
         *)
@@ -590,7 +590,7 @@ fi  # end should_run_stage 3
 
 # ======== 阶段 4: 个股深度研究 ========
 
-if should_run_stage 3 || should_run_stage 4; then
+if should_run_stage 4; then
 
 echo ""
 echo "=== 阶段 4: 个股深度研究 ==="
@@ -685,19 +685,19 @@ fi
 
 EXTRA_SKILLS="$WEB_OPERATOR_SKILL" run_agent "个股研究员" "$STOCK_RESEARCH_FILE" \
     "$PROJECT_ROOT/agents/researchers/stock-researcher-pipeline.md" \
-    "@$RESEARCHER_PROMPT" || echo "[警告] 个股研究员执行失败，继续执行阶段 4"
+    "@$RESEARCHER_PROMPT" || echo "[警告] 个股研究员执行失败，继续执行阶段 5"
 
 if [[ -s "$STOCK_RESEARCH_FILE" ]]; then
     echo "阶段 4 完成 ✓"
 else
-    echo "[警告] 个股研究报告未生成，阶段 4 将不含选股参考"
+    echo "[警告] 个股研究报告未生成，阶段 5 将不含选股参考"
 fi
 
 fi  # end stock research stage
 
 # ======== 阶段 5: 最终决策 ========
 
-if should_run_stage 4; then
+if should_run_stage 5; then
 
 echo ""
 echo "=== 阶段 5: 最终决策 ==="
@@ -839,17 +839,19 @@ else
     fi
 fi
 
-echo "阶段 4 完成"
+echo "阶段 5 完成"
 
-fi  # end should_run_stage 4
+fi  # end should_run_stage 5
 
-# ======== 阶段 5: 状态保存（用于次日复盘） ========
-echo ""
-echo "=== 阶段 5: 保存 Pipeline 状态 ==="
-if bin/save-state.py "$REPORT_DIR" "$TRADE_DATE" > "$REPORT_DIR/state.json" 2>/dev/null; then
-    echo "状态已保存: $REPORT_DIR/state.json"
-else
-    echo "[警告] 状态保存失败，复盘功能将不可用"
+# ======== 阶段 6: 状态保存（用于次日复盘） ========
+if should_run_stage 6; then
+    echo ""
+    echo "=== 阶段 6: 保存 Pipeline 状态 ==="
+    if bin/save-state.py "$REPORT_DIR" "$TRADE_DATE" > "$REPORT_DIR/state.json" 2>/dev/null; then
+        echo "状态已保存: $REPORT_DIR/state.json"
+    else
+        echo "[警告] 状态保存失败，复盘功能将不可用"
+    fi
 fi
 
 # ======== 完成 ========
