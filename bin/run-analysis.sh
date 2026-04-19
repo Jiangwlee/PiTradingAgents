@@ -450,6 +450,36 @@ while IFS= read -r theme <&3; do
     # 题材看多辩论（P0-1 修复：使用临时 prompt 文件）
     echo "  ├─ 看多辩手..."
     THEME_BULL_PROMPT="$TMP_DIR/theme-${THEME_IDX}-bull-prompt.txt"
+    THEME_CTX_FILE="$TMP_DIR/theme-${THEME_IDX}-context.txt"
+    python3 - "$theme" "$REPORT_DIR/02-theme-report.md" "$REPORT_DIR/03-trend-report.md" "$REPORT_DIR/04-catalyst-report.md" > "$THEME_CTX_FILE" <<'PY'
+import sys, re, pathlib
+
+theme = sys.argv[1].strip()
+paths = sys.argv[2:]
+
+def extract(path_str, theme):
+    p = pathlib.Path(path_str)
+    if not p.exists():
+        return f"=== {p.name} ===\n（文件不存在）\n"
+    text = p.read_text(encoding='utf-8', errors='ignore')
+    lines = text.splitlines()
+    hits = []
+    for i, line in enumerate(lines):
+        if theme and theme in line:
+            start = max(0, i-4)
+            end = min(len(lines), i+12)
+            hits.append("\n".join(lines[start:end]).strip())
+            if len(hits) >= 3:
+                break
+    if hits:
+        body = "\n\n---\n\n".join(hits)
+    else:
+        body = text[:1800]
+    return f"=== {p.name} 与题材[{theme}]相关摘录 ===\n{body}\n"
+
+for path in paths:
+    print(extract(path, theme))
+PY
     {
         echo "题材辩论模式"
         echo "题材名称: $theme"
@@ -460,8 +490,8 @@ while IFS= read -r theme <&3; do
             echo "请优先吸收其中的改进规则、复盘结论和检索语句，避免重复同类错误。"
             echo ""
         fi
-        echo "分析报告汇总:"
-        cat "$REPORTS_CTX"
+        echo "=== 题材相关摘录（避免重复阅读整包报告） ==="
+        cat "$THEME_CTX_FILE"
         echo ""
         echo "市场环境判定:"
         cat "$REPORT_DIR/05-market-debate.md" 2>/dev/null || echo "无"
@@ -483,8 +513,8 @@ while IFS= read -r theme <&3; do
             echo "请优先吸收其中的改进规则、复盘结论和检索语句，避免重复同类错误。"
             echo ""
         fi
-        echo "分析报告汇总:"
-        cat "$REPORTS_CTX"
+        echo "=== 题材相关摘录（避免重复阅读整包报告） ==="
+        cat "$THEME_CTX_FILE"
         echo ""
         echo "市场环境判定:"
         cat "$REPORT_DIR/05-market-debate.md" 2>/dev/null || echo "无"
@@ -558,12 +588,12 @@ echo "阶段 3 完成"
 
 fi  # end should_run_stage 3
 
-# ======== 阶段 3.5: 个股深度研究 ========
+# ======== 阶段 4: 个股深度研究 ========
 
 if should_run_stage 3 || should_run_stage 4; then
 
 echo ""
-echo "=== 阶段 3.5: 个股深度研究 ==="
+echo "=== 阶段 4: 个股深度研究 ==="
 echo "[研究员] 多源采集 + 概念聚合 + 五维度分析..."
 
 STOCK_RESEARCH_FILE="$REPORT_DIR/08-stock-research.md"
@@ -658,19 +688,19 @@ EXTRA_SKILLS="$WEB_OPERATOR_SKILL" run_agent "个股研究员" "$STOCK_RESEARCH_
     "@$RESEARCHER_PROMPT" || echo "[警告] 个股研究员执行失败，继续执行阶段 4"
 
 if [[ -s "$STOCK_RESEARCH_FILE" ]]; then
-    echo "阶段 3.5 完成 ✓"
+    echo "阶段 4 完成 ✓"
 else
     echo "[警告] 个股研究报告未生成，阶段 4 将不含选股参考"
 fi
 
-fi  # end should_run_stage 3.5
+fi  # end stock research stage
 
-# ======== 阶段 4: 最终决策 ========
+# ======== 阶段 5: 最终决策 ========
 
 if should_run_stage 4; then
 
 echo ""
-echo "=== 阶段 4: 最终决策 ==="
+echo "=== 阶段 5: 最终决策 ==="
 [[ -n "${PITA_MODEL_TRADER:-}" ]] && echo "模型(投资经理): $PITA_MODEL_TRADER"
 echo "[决策] 投资经理生成最终报告..."
 
