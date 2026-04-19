@@ -10,6 +10,7 @@
 #   research  [--stocks CODE,CODE]     个股深度研究
 #   reflect   [DATE]                   复盘反思（自进化），DATE 为复盘日，默认自动确定
 #   inject    EXPERIENCE               注入交易经验
+#   review    [--last N] [--from DATE]  荐股复盘分析（对比趋势股基准）
 #   data      SUBCOMMAND [ARGS...]     市场数据查询
 #   doctor                             系统诊断
 #
@@ -389,6 +390,32 @@ def doctor() -> None:
                 console.print(f"  [yellow]![/yellow] ashare API 返回 {resp.status}")
     except Exception as e:
         console.print(f"  [red]✗[/red] ashare API 不可达 ({e})")
+
+
+@app.command()
+def review(
+    last: Annotated[int, typer.Option(help="分析最近 N 期报告")] = 10,
+    from_date: Annotated[Optional[str], typer.Option("--from", help="起始日期 (YYYY-MM-DD)")] = None,
+    to_date: Annotated[Optional[str], typer.Option("--to", help="截止日期 (YYYY-MM-DD)")] = None,
+    baseline_top: Annotated[int, typer.Option(help="趋势股基准 Top N")] = 10,
+    output: Annotated[Optional[str], typer.Option("-o", "--output", help="输出到文件")] = None,
+) -> None:
+    """荐股复盘分析（对比趋势股基准）"""
+    cmd = [
+        "uv", "run", "--script",
+        str(APP_ROOT / "bin" / "review-picks.py"),
+        "--last", str(last),
+        "--baseline-top", str(baseline_top),
+    ]
+    if from_date:
+        cmd += ["--from", from_date]
+    if to_date:
+        cmd += ["--to", to_date]
+    if output:
+        cmd += ["--output", output]
+
+    console.print(Panel.fit("PiTrader — 荐股复盘", border_style="cyan"))
+    subprocess.run(cmd)
 
 
 # ── 入口 ─────────────────────────────────────────────────────────────────────

@@ -17,5 +17,6 @@ fi
 TRADE_DATE="$1"
 LIMIT="${2:-100}"
 SORT="${3:-trend_score}"
+ENRICH="${4:-true}"
 
-curl -sf --connect-timeout 5 --max-time 30 "${API_URL}/trend-pool/daily?trade_date=${TRADE_DATE}&limit=${LIMIT}&sort=${SORT}" | jq .
+curl -sf --connect-timeout 5 --max-time 60 "${API_URL}/trend-pool/daily?trade_date=${TRADE_DATE}&limit=${LIMIT}&sort=${SORT}&enrich=${ENRICH}" | jq .

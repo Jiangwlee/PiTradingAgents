@@ -93,6 +93,12 @@ run_agent_node() {
         for skill_path in $EXTRA_SKILLS; do
             pi_args+=(--skill "$skill_path")
         done
+        # web-operator 浏览器操作耗时长，告知 LLM 使用足够的 bash timeout
+        if [[ -z "$append_system_prompt" ]]; then
+            append_system_prompt="[bash timeout] omp web-operator 命令涉及浏览器操作，耗时较长。调用时 timeout 设为 300 秒或不传 timeout 参数，绝对不要用 60 秒。"
+        else
+            append_system_prompt+=$'\n\n'"[bash timeout] omp web-operator 命令涉及浏览器操作，耗时较长。调用时 timeout 设为 300 秒或不传 timeout 参数，绝对不要用 60 秒。"
+        fi
     fi
     if [[ -n "$append_system_prompt" ]]; then
         pi_args+=(--append-system-prompt "$append_system_prompt")

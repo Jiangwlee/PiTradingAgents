@@ -81,11 +81,54 @@ def get_stock_change_pct(code, date):
     kline = get_kline_daily(code, days=5)
     if not kline or not isinstance(kline, list):
         return None
-    
+
     for item in kline:
         if item.get('date') == date:
             return item.get('change_pct')
     return None
+
+
+def get_multi_day_gains(code: str, decision_date: str) -> dict:
+    """
+    计算 D+1/D+3/D+5 收益率，以 D+1 开盘价为买入基准。
+    返回: {
+        "buy_price": float,        # D+1 开盘价
+        "d1": {"date": str, "close": float, "gain_pct": float},
+        "d3": {"date": str, "close": float, "gain_pct": float} | None,
+        "d5": {"date": str, "close": float, "gain_pct": float} | None,
+    }
+    """
+    kline = get_kline_daily(code, days=15)
+    if not kline or not isinstance(kline, list):
+        return {}
+
+    # 按日期升序排列
+    bars = sorted(kline, key=lambda b: b.get('date', ''))
+    # 只取决策日之后的交易日
+    future_bars = [b for b in bars if b.get('date', '') > decision_date]
+    if not future_bars:
+        return {}
+
+    buy_price = future_bars[0].get('open')
+    if not buy_price or buy_price <= 0:
+        return {}
+
+    result = {'buy_price': buy_price}
+    checkpoints = {'d1': 0, 'd3': 2, 'd5': 4}  # 索引: 第1/3/5个交易日
+
+    for label, idx in checkpoints.items():
+        if idx < len(future_bars):
+            bar = future_bars[idx]
+            close = bar.get('close')
+            if close is not None and close > 0:
+                gain_pct = round((close / buy_price - 1) * 100, 2)
+                result[label] = {
+                    'date': bar['date'],
+                    'close': close,
+                    'gain_pct': gain_pct,
+                }
+
+    return result
 
 
 def infer_emotion_stage(market_data):
@@ -144,66 +187,65 @@ def infer_emotion_stage(market_data):
     return "震荡期"
 
 
-def calc_signal_a(recommended_stocks, eval_date):
+def calc_signal_a(picks: list, decision_date: str, eval_date: str) -> dict:
     """
-    计算个股预测准确率 (Signal A)
-    - signal="买入/加仓" + next_day_pct > 0 → correct
-    - signal="观望/减仓" + next_day_pct <= 0 → correct
+    计算荐股多日表现 (Signal A)
+
+    以 D+1 开盘价为买入基准，评估 D+1/D+3/D+5 三个节点的收益率。
+    picks 来自投资经理"今日荐股"JSON（含 matched_conditions）。
+    兼容旧版 recommended_stocks（无 matched_conditions）。
     """
     stocks_result = []
-    correct_count = 0
-    total_count = 0
-    
-    for stock in recommended_stocks:
-        code = stock.get('code', '')
-        name = stock.get('name', '')
-        signal = stock.get('signal', '')
-        theme = stock.get('theme', '')
-        stars = stock.get('stars', '')
-        
+    # 统计 D+1 / D+3 / D+5 各节点的盈利情况
+    win_counts = {'d1': 0, 'd3': 0, 'd5': 0}
+    total_counts = {'d1': 0, 'd3': 0, 'd5': 0}
+
+    for pick in picks:
+        code = pick.get('code', '')
+        name = pick.get('name', '')
+        signal = pick.get('signal', pick.get('confidence', ''))
+        matched = pick.get('matched_conditions', [])
+
         if not code:
             continue
-        
-        next_day_pct = get_stock_change_pct(code, eval_date)
-        
+
+        gains = get_multi_day_gains(code, decision_date)
+
         stock_result = {
             'code': code,
             'name': name,
             'signal': signal,
-            'theme': theme,
-            'stars': stars,
-            'next_day_pct': next_day_pct
+            'matched_conditions': matched,
+            'buy_price': gains.get('buy_price'),
+            'gains': {},
         }
-        
-        if next_day_pct is None:
-            stock_result['correct'] = None
-            stock_result['note'] = '无法获取数据'
-        else:
-            total_count += 1
-            # 判定规则
-            is_correct = False
-            if '买入' in signal or '加仓' in signal:
-                is_correct = next_day_pct > 0
-            elif '观望' in signal or '减仓' in signal or '卖出' in signal:
-                is_correct = next_day_pct <= 0
-            else:
-                # 默认规则：有星级推荐视为看多
-                is_correct = next_day_pct > 0 if stars else None
-            
-            stock_result['correct'] = is_correct
-            if is_correct:
-                correct_count += 1
-        
+
+        for label in ('d1', 'd3', 'd5'):
+            g = gains.get(label)
+            if g:
+                stock_result['gains'][label] = g
+                total_counts[label] += 1
+                if g['gain_pct'] > 0:
+                    win_counts[label] += 1
+
+        # 取最远可用节点作为最终收益
+        best_label = 'd5' if 'd5' in stock_result['gains'] else (
+            'd3' if 'd3' in stock_result['gains'] else 'd1')
+        stock_result['final_gain'] = stock_result['gains'].get(best_label, {}).get('gain_pct')
+
         stocks_result.append(stock_result)
-    
-    accuracy = correct_count / total_count if total_count > 0 else None
-    
+
+    # 各节点胜率
+    win_rates = {}
+    for label in ('d1', 'd3', 'd5'):
+        tc = total_counts[label]
+        win_rates[label] = round(win_counts[label] / tc, 4) if tc > 0 else None
+
     return {
-        'description': '推荐个股次日表现',
+        'description': '荐股多日表现（以D+1开盘价买入）',
         'stocks': stocks_result,
-        'accuracy': accuracy,
-        'correct_count': correct_count,
-        'total_count': total_count
+        'win_rates': win_rates,
+        'total_counts': total_counts,
     }
 
 
@@ -398,7 +440,8 @@ def main():
     parser = argparse.ArgumentParser(description='计算 Pipeline 预测信号准确率')
     parser.add_argument('--state', required=True, help='state.json 文件路径')
     parser.add_argument('--eval-date', required=True, help='评估日期 (D+1日)，格式 YYYY-MM-DD')
-    
+    parser.add_argument('--picks', help='picks.json 文件路径（优先于 state.json 中的 picks）')
+
     args = parser.parse_args()
     
     # 读取 state.json
@@ -427,10 +470,26 @@ def main():
         eprint(f"  - 封板率: {market_data.get('seal_rate')}")
     
     # 计算各信号
-    eprint("正在计算 Signal A (个股预测)...")
-    signal_a = calc_signal_a(state.get('recommended_stocks', []), eval_date)
-    eprint(f"  - 评估个股数: {signal_a['total_count']}")
-    eprint(f"  - 准确率: {signal_a['accuracy']}")
+    eprint("正在计算 Signal A (荐股多日表现)...")
+    # 优先从 --picks 文件读取，回退到 state.json
+    picks = []
+    if args.picks:
+        try:
+            with open(args.picks, 'r', encoding='utf-8') as f:
+                picks_data = json.load(f)
+            picks = picks_data.get('picks', [])
+            eprint(f"  - 从 picks.json 读取 {len(picks)} 只荐股")
+        except Exception as e:
+            eprint(f"  - picks.json 读取失败: {e}")
+    if not picks:
+        picks = state.get('picks', [])
+    if not picks:
+        picks = state.get('recommended_stocks', [])
+        if picks:
+            eprint("  - 注意: 使用旧版 recommended_stocks（无 matched_conditions）")
+    signal_a = calc_signal_a(picks, decision_date, eval_date)
+    eprint(f"  - 评估个股数: {signal_a['total_counts']}")
+    eprint(f"  - 胜率: D+1={signal_a['win_rates'].get('d1')}, D+3={signal_a['win_rates'].get('d3')}, D+5={signal_a['win_rates'].get('d5')}")
     
     eprint("正在计算 Signal B (题材预测)...")
     signal_b = calc_signal_b(state.get('top_themes', []), decision_date, eval_date)
@@ -451,15 +510,19 @@ def main():
     )
     eprint(f"  - 市场方向: {bull_bear['market_direction']}")
     
-    # 计算总体准确率
+    # 计算总体准确率（Signal A 使用最远节点胜率）
     accuracies = []
-    if signal_a['accuracy'] is not None:
-        accuracies.append(signal_a['accuracy'])
+    # Signal A: 优先取 D+5 胜率，回退到 D+3、D+1
+    for label in ('d5', 'd3', 'd1'):
+        wr = signal_a['win_rates'].get(label)
+        if wr is not None:
+            accuracies.append(wr)
+            break
     if signal_b['accuracy'] is not None:
         accuracies.append(signal_b['accuracy'])
     if signal_c['correct'] is not None:
         accuracies.append(1.0 if signal_c['correct'] else 0.0)
-    
+
     overall_accuracy = sum(accuracies) / len(accuracies) if accuracies else None
     
     # 构建输出

@@ -238,6 +238,12 @@ pi-trader research
 # 指定股票研究（跳过前3轮筛选，直接深度研究）
 pi-trader research --stocks 600396,603929
 
+# 荐股复盘分析（对比趋势股基准，以次日开盘价买入计算收益）
+pi-trader review                          # 最近 10 期
+pi-trader review --last 5                 # 最近 5 期
+pi-trader review --from 2026-04-01 --to 2026-04-13  # 指定区间
+pi-trader review -o docs/review/report.txt           # 输出到文件
+
 # 市场数据查询
 pi-trader data emotion 2026-03-21
 pi-trader data theme-pool 2026-03-21 50 theme_rank

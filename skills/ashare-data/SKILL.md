@@ -53,8 +53,15 @@ pi-trader data emotion 2026-03-21
 
 | Command | Function | Usage |
 |---------|----------|-------|
-| `trend-pool` | Daily trend pool ranking | `pi-trader data trend-pool <trade_date> [limit] [sort]` |
+| `trend-pool` | Daily trend pool ranking (with kline metrics) | `pi-trader data trend-pool <trade_date> [limit] [sort]` |
 | `trend-history` | Individual stock trend history | `pi-trader data trend-history <code> [days]` |
+
+**trend-pool enriched fields** (included by default):
+- `close`: closing price
+- `change_pct`: daily change percentage
+- `ma5_deviation`: price deviation from MA5 (%), positive = above MA5
+- `consecutive_up_days`: number of consecutive up days
+- `gain_5d`: cumulative gain over last 5 trading days (%)
 
 ### Market Review
 

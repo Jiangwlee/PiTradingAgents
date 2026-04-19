@@ -569,6 +569,13 @@ echo "[研究员] 多源采集 + 概念聚合 + 五维度分析..."
 STOCK_RESEARCH_FILE="$REPORT_DIR/08-stock-research.md"
 RESEARCHER_PROMPT="$TMP_DIR/researcher-prompt.txt"
 
+# --- Method A: 从情绪报告提取标记行 ---
+EMOTION_REPORT="$REPORT_DIR/01-emotion-report.md"
+EMOTION_RISK=$(grep -oP '^EMOTION_RISK:\s*\K.*' "$EMOTION_REPORT" 2>/dev/null || echo "未知")
+NEXT_STAGE=$(grep -oP '^NEXT_STAGE:\s*\K.*' "$EMOTION_REPORT" 2>/dev/null || echo "未知")
+POSITION_CAP=$(grep -oP '^POSITION_CAP:\s*\K.*' "$EMOTION_REPORT" 2>/dev/null || echo "未知")
+echo "  情绪风险: ${EMOTION_RISK} | 次日预判: ${NEXT_STAGE} | 仓位上限: ${POSITION_CAP}"
+
 # 多源合并：ashare 候选池 + THS 排行 + 问财涨幅榜 → 概念聚合 → 精选 Top 30
 MERGE_JSON=$(uv run --script "$PROJECT_ROOT/scripts/merge-stock-candidates.py" "$TRADE_DATE" --top 30 2>"$TMP_DIR/merge.log" \
     || echo '{}')
@@ -588,8 +595,33 @@ echo "  热门概念: ${CONCEPT_TOP}"
 CONCEPT_DIST=$(echo "$MERGE_JSON" | jq '[.concept_distribution[] | {concept, stock_count, concentration_pct, avg_gain_60d, avg_gain_120d, top3: [.stocks[:3][] | .name]}]' 2>/dev/null || echo "[]")
 SELECTED_STOCKS=$(echo "$MERGE_JSON" | jq '.selected_stocks' 2>/dev/null || echo "[]")
 
+# --- Method B: 调用 enriched trend-pool API 获取候选股 MA5 偏离度 ---
+ENRICHED_DATA="[]"
+CANDIDATE_CODES=$(echo "$SELECTED_STOCKS" | jq -r '.[].code // empty' 2>/dev/null | head -30)
+if [[ -n "$CANDIDATE_CODES" ]]; then
+    # 批量获取趋势池 enriched 数据（含 ma5_deviation, change_pct 等）
+    RAW_ENRICHED=$(scripts/fetch-trend-pool.sh "$TRADE_DATE" 500 rank true 2>/dev/null || echo "[]")
+    if [[ -n "$RAW_ENRICHED" && "$RAW_ENRICHED" != "[]" ]]; then
+        # 仅保留候选池中的股票，精简字段
+        CODE_FILTER=$(echo "$CANDIDATE_CODES" | paste -sd'|')
+        ENRICHED_DATA=$(echo "$RAW_ENRICHED" | jq --arg codes "$CODE_FILTER" \
+            '[.[] | select(.code | test($codes)) | {code, name, close, change_pct, ma5_deviation, consecutive_up_days, gain_5d}]' \
+            2>/dev/null || echo "[]")
+        ENRICHED_COUNT=$(echo "$ENRICHED_DATA" | jq 'length' 2>/dev/null || echo 0)
+        echo "  MA5偏离度: 匹配 ${ENRICHED_COUNT} 只候选股"
+    fi
+fi
+
 {
     echo "交易日期：$TRADE_DATE"
+    echo ""
+    echo "## 市场环境风险（来自情绪分析师）"
+    echo ""
+    echo "- 情绪风险等级: ${EMOTION_RISK}"
+    echo "- 次日预判: ${NEXT_STAGE}"
+    echo "- 仓位上限: ${POSITION_CAP}"
+    echo ""
+    echo "> ⚠️ 若情绪风险为🔴高风险或🟡中风险，选股须更严格，详见研究员 prompt 中的市场风险约束规则。"
     echo ""
     echo "## 数据来源"
     echo ""
@@ -605,6 +637,10 @@ SELECTED_STOCKS=$(echo "$MERGE_JSON" | jq '.selected_stocks' 2>/dev/null || echo
     echo "## 精选候选池（共 ${SELECTED} 只，按多源命中数+涨幅排序）"
     echo ""
     echo "$SELECTED_STOCKS"
+    echo ""
+    echo "## 候选股 MA5 偏离度数据"
+    echo ""
+    echo "$ENRICHED_DATA"
     echo ""
     echo "## 题材分析报告（02-theme-report.md）"
     echo ""
@@ -749,19 +785,27 @@ if [[ -f "$REPORT_DIR/07-final-report.md" ]]; then
     fi
 fi
 
-# 提取荐股数据为结构化 picks.json
-FINAL_REPORT_FILE=""
-if ls "$REPORT_DIR"/PiTrader复盘-*.md &>/dev/null; then
-    FINAL_REPORT_FILE=$(ls -t "$REPORT_DIR"/PiTrader复盘-*.md | head -1)
+# 验证 picks.json（投资经理应已通过 bash 工具写入）
+PICKS_FILE="$REPORT_DIR/picks.json"
+if [[ -f "$PICKS_FILE" ]]; then
+    PICKS_COUNT=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(len(d.get('picks',[])))" "$PICKS_FILE" 2>/dev/null || echo "?")
+    echo "荐股数据: $PICKS_FILE（${PICKS_COUNT} 只）"
 else
-    FINAL_REPORT_FILE="$REPORT_DIR/07-final-report.md"
-fi
-if [[ -f "$FINAL_REPORT_FILE" ]]; then
-    if bin/extract-picks.py "$FINAL_REPORT_FILE" > "$REPORT_DIR/picks.json" 2>/dev/null; then
-        PICKS_COUNT=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(len(d.get('picks',[])))" "$REPORT_DIR/picks.json" 2>/dev/null || echo "?")
-        echo "荐股已提取: $REPORT_DIR/picks.json（${PICKS_COUNT} 只）"
+    # Fallback: 从 Markdown 报告中提取（兼容 LLM 未写文件的情况）
+    echo "[警告] 投资经理未写入 picks.json，尝试从报告中提取..."
+    FINAL_REPORT_FILE=""
+    if ls "$REPORT_DIR"/PiTrader复盘-*.md &>/dev/null; then
+        FINAL_REPORT_FILE=$(ls -t "$REPORT_DIR"/PiTrader复盘-*.md | head -1)
     else
-        echo "[警告] 荐股数据提取失败"
+        FINAL_REPORT_FILE="$REPORT_DIR/07-final-report.md"
+    fi
+    if [[ -f "$FINAL_REPORT_FILE" ]]; then
+        if bin/extract-picks.py "$FINAL_REPORT_FILE" > "$PICKS_FILE" 2>/dev/null; then
+            PICKS_COUNT=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(len(d.get('picks',[])))" "$PICKS_FILE" 2>/dev/null || echo "?")
+            echo "荐股已从报告提取: $PICKS_FILE（${PICKS_COUNT} 只，fallback模式）"
+        else
+            echo "[警告] 荐股数据提取失败"
+        fi
     fi
 fi
 

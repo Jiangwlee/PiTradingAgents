@@ -341,7 +341,13 @@ echo ""
 echo "=== 步骤 3: 计算结果信号 ==="
 
 SIGNALS_FILE="$REPORT_DIR/signals.json"
-if "$PROJECT_ROOT/bin/calc-signals.py" --state "$STATE_FILE" --eval-date "$EVAL_DATE" > "$SIGNALS_FILE" 2>/dev/null; then
+CALC_ARGS=(--state "$STATE_FILE" --eval-date "$EVAL_DATE")
+# 优先传递 picks.json（投资经理直接写入的结构化荐股数据）
+if [[ -f "$REPORT_DIR/picks.json" ]]; then
+    CALC_ARGS+=(--picks "$REPORT_DIR/picks.json")
+    echo "  ✓ 使用 picks.json 评估荐股"
+fi
+if "$PROJECT_ROOT/bin/calc-signals.py" "${CALC_ARGS[@]}" > "$SIGNALS_FILE" 2>/dev/null; then
     echo "  ✓ 信号计算完成: $SIGNALS_FILE"
 else
     echo "  ✗ 信号计算失败" >&2

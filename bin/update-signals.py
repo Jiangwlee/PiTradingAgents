@@ -33,17 +33,17 @@ from datetime import datetime
 
 # ── 评分区间 ──────────────────────────────────────────────────────────────────
 
-def change_pct_to_delta(change_pct: float) -> int:
-    """根据涨跌幅计算信号分数变化"""
-    if change_pct >= 10:
+def gain_to_delta(gain_pct: float) -> int:
+    """根据多日收益率计算信号分数变化（基于 D+1 开盘价的收益）"""
+    if gain_pct >= 10:
         return 3
-    elif change_pct >= 5:
+    elif gain_pct >= 5:
         return 2
-    elif change_pct >= 0:
+    elif gain_pct >= 0:
         return 1
-    elif change_pct >= -5:
+    elif gain_pct >= -5:
         return -1
-    elif change_pct >= -10:
+    elif gain_pct >= -10:
         return -2
     else:
         return -3
@@ -63,23 +63,30 @@ def api_get(base_url: str, endpoint: str):
         return None
 
 
-def fetch_stock_change(api_url: str, code: str, trade_date: str) -> float | None:
-    """获取指定股票在 trade_date 的涨跌幅，失败返回 None"""
-    # 尝试 trend-pool（包含当日走强股）
-    data = api_get(api_url, f"/stocks/trend-pool?trade_date={trade_date}")
-    if data and isinstance(data, list):
-        for s in data:
-            if s.get("code") == code or s.get("code") == code.lstrip("0"):
-                return s.get("change_pct")
+def fetch_multi_day_gain(api_url: str, code: str, decision_date: str) -> float | None:
+    """
+    获取荐股的多日收益（以 D+1 开盘价为基准）。
+    优先取 D+5 收益，回退到 D+3、D+1。
+    """
+    data = api_get(api_url, f"/kline/daily/{code}?days=15")
+    if not data or not isinstance(data, list):
+        return None
 
-    # 尝试 red-window（连阳股）
-    data = api_get(api_url, f"/red-window/daily/{trade_date}")
-    if data and isinstance(data, list):
-        for s in data:
-            if s.get("code") == code:
-                bars = s.get("bars", [])
-                if bars:
-                    return bars[-1].get("change_pct")
+    bars = sorted(data, key=lambda b: b.get('date', ''))
+    future_bars = [b for b in bars if b.get('date', '') > decision_date]
+    if not future_bars:
+        return None
+
+    buy_price = future_bars[0].get('open')
+    if not buy_price or buy_price <= 0:
+        return None
+
+    # 优先取 D+5，回退 D+3，再回退 D+1
+    for idx in (4, 2, 0):
+        if idx < len(future_bars):
+            close = future_bars[idx].get('close')
+            if close is not None and close > 0:
+                return round((close / buy_price - 1) * 100, 2)
 
     return None
 
@@ -224,20 +231,20 @@ def main():
     pos_idx = build_index("positive")
     avd_idx = build_index("avoid")
 
-    # ── 1. 自动评分：正向条件（基于 picks + 次日涨跌幅）──────────────────────
-    if args.picks and args.eval_date:
+    # ── 1. 自动评分：正向条件（基于 picks + 多日收益）────────────────────────
+    if args.picks and args.decision_date:
         picks_path = Path(args.picks)
         if picks_path.exists():
             picks_data = json.loads(picks_path.read_text(encoding="utf-8"))
             for pick in picks_data.get("picks", []):
                 code = pick.get("code", "")
                 name = pick.get("name", "")
-                change_pct = fetch_stock_change(args.api_url, code, args.eval_date)
-                if change_pct is None:
-                    print(f"[warn] 无法获取 {code} {name} 在 {args.eval_date} 的涨跌幅，跳过自动评分", file=sys.stderr)
+                gain_pct = fetch_multi_day_gain(args.api_url, code, args.decision_date)
+                if gain_pct is None:
+                    print(f"[warn] 无法获取 {code} {name} 的多日收益，跳过自动评分", file=sys.stderr)
                     continue
-                delta = change_pct_to_delta(change_pct)
-                reason = f"{name}({code}) 次日{'+' if change_pct>=0 else ''}{change_pct:.1f}%"
+                delta = gain_to_delta(gain_pct)
+                reason = f"{name}({code}) 多日收益{'+' if gain_pct>=0 else ''}{gain_pct:.1f}%"
                 for cid in pick.get("matched_conditions", []):
                     if cid in pos_idx:
                         sig = pos_idx[cid]

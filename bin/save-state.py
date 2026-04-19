@@ -146,10 +146,36 @@ def parse_markdown_table(table_lines):
     return headers, rows
 
 
+def extract_picks_json(content: str) -> list:
+    """从今日荐股章节提取机器可读 JSON（含 matched_conditions）"""
+    section_match = re.search(
+        r'##\s*[七7][\s、.。]*今日荐股.*?(?=\n##\s|\Z)',
+        content,
+        re.DOTALL | re.IGNORECASE,
+    )
+    if not section_match:
+        return []
+
+    section = section_match.group(0)
+    json_match = re.search(r'```json\s*(.*?)\s*```', section, re.DOTALL)
+    if not json_match:
+        return []
+
+    try:
+        data = json.loads(json_match.group(1))
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict) and "picks" in data:
+            return data["picks"]
+        return []
+    except json.JSONDecodeError:
+        return []
+
+
 def extract_recommended_stocks(content):
-    """从内容提取推荐股票列表"""
+    """从内容提取推荐股票列表（核心标的池，兼容旧版本）"""
     stocks = []
-    
+
     headers, rows = extract_markdown_table(content, r'##\s+.*核心标的池')
     
     if not headers or not rows:
@@ -367,12 +393,13 @@ def main():
         'position': '',
         'top_themes': [],
         'recommended_stocks': [],
+        'picks': [],
         'bull_key_points': [],
         'bear_key_points': [],
         'judge_verdict': '',
         'reports': {}
     }
-    
+
     if final_report:
         state['emotion_stage'] = extract_emotion_stage(final_report)
         state['market_env'] = extract_market_env(final_report)
@@ -384,6 +411,22 @@ def main():
         eprint(f"  - 建议仓位: {state['position']}")
         eprint(f"  - 推荐标的数: {len(state['recommended_stocks'])}")
         eprint(f"  - 主流题材数: {len(state['top_themes'])}")
+
+    # 从 picks.json 文件读取荐股数据（投资经理直接写入）
+    picks_file = report_path / 'picks.json'
+    if picks_file.exists():
+        try:
+            picks_data = json.loads(picks_file.read_text(encoding='utf-8'))
+            state['picks'] = picks_data.get('picks', [])
+            state['market_context'] = picks_data.get('market_context', {})
+            eprint(f"  - 荐股数(picks.json): {len(state['picks'])}")
+        except (json.JSONDecodeError, Exception) as e:
+            eprint(f"  - picks.json 解析失败: {e}")
+    else:
+        # Fallback: 从 Markdown 提取
+        if final_report:
+            state['picks'] = extract_picks_json(final_report)
+            eprint(f"  - 荐股数(markdown fallback): {len(state['picks'])}")
     
     if market_debate:
         state['judge_verdict'] = extract_judge_verdict(market_debate)
