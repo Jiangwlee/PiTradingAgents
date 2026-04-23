@@ -199,7 +199,7 @@ if should_run_stage 1; then
 
 echo ""
 echo "=== 阶段 1: 分析团队（并行执行） ==="
-echo "启动 4 个分析师..."
+echo "启动 5 个分析师..."
 
 # 1. 情绪分析师
 (
@@ -240,7 +240,28 @@ if [[ "$MODE" == "stream" ]]; then
 fi
 echo "[分析师] 趋势分析师启动..."
 
-# 4. 催化剂分析师（检查 web-operator 可用性）
+# 4. 舆情分析师
+(
+    if command -v "$OMP_WEB_OPERATOR_BIN" >/dev/null 2>&1; then
+        EXTRA_SKILLS="$WEB_OPERATOR_SKILL" PI_DEFER_RENDER=1 run_parallel_agent "舆情分析师" "$REPORT_DIR/00-opinion-report.md" "$PROJECT_ROOT/agents/analysts/opinion-analyst.md" "/skill:ashare-data ${TRADE_DATE}" \
+            && echo ok > "$TMP_DIR/opinion.status" || echo fail > "$TMP_DIR/opinion.status"
+    else
+        PI_DEFER_RENDER=1 run_parallel_agent "舆情分析师" "$REPORT_DIR/00-opinion-report.md" "$PROJECT_ROOT/agents/analysts/opinion-analyst.md" "/skill:ashare-data ${TRADE_DATE}" \
+            && echo ok > "$TMP_DIR/opinion.status" || echo fail > "$TMP_DIR/opinion.status"
+    fi
+) &
+PID_OPINION=$!
+RENDER_PID_OPINION=""
+if [[ "$MODE" == "stream" ]]; then
+    start_parallel_stream_renderer "$PID_OPINION" "舆情分析师" "$REPORT_DIR/00-opinion-report.md"
+    RENDER_PID_OPINION="$RENDERER_PID"
+fi
+echo "[分析师] 舆情分析师启动..."
+if ! command -v "$OMP_WEB_OPERATOR_BIN" >/dev/null 2>&1; then
+    echo "  omp web-operator 不可用，舆情分析师将仅基于结构化数据和标题级信息分析"
+fi
+
+# 5. 催化剂分析师（检查 web-operator 可用性）
 (
     if command -v "$OMP_WEB_OPERATOR_BIN" >/dev/null 2>&1; then
         EXTRA_SKILLS="$WEB_OPERATOR_SKILL" PI_DEFER_RENDER=1 run_parallel_agent "催化剂分析师" "$REPORT_DIR/04-catalyst-report.md" "$PROJECT_ROOT/agents/analysts/catalyst-analyst.md" "/skill:ashare-data ${TRADE_DATE}" \
@@ -291,15 +312,21 @@ echo "等待所有分析师完成..."
 finish_parallel_agent "$PID_EMOTION" "情绪分析师" "$REPORT_DIR/01-emotion-report.md" "$PROJECT_ROOT/agents/analysts/emotion-analyst.md" "$TMP_DIR/emotion.status" "$RENDER_PID_EMOTION"
 finish_parallel_agent "$PID_THEME" "题材分析师" "$REPORT_DIR/02-theme-report.md" "$PROJECT_ROOT/agents/analysts/theme-analyst.md" "$TMP_DIR/theme.status" "$RENDER_PID_THEME"
 finish_parallel_agent "$PID_TREND" "趋势分析师" "$REPORT_DIR/03-trend-report.md" "$PROJECT_ROOT/agents/analysts/trend-analyst.md" "$TMP_DIR/trend.status" "$RENDER_PID_TREND"
+finish_parallel_agent "$PID_OPINION" "舆情分析师" "$REPORT_DIR/00-opinion-report.md" "$PROJECT_ROOT/agents/analysts/opinion-analyst.md" "$TMP_DIR/opinion.status" "$RENDER_PID_OPINION"
 finish_parallel_agent "$PID_CATALYST" "催化剂分析师" "$REPORT_DIR/04-catalyst-report.md" "$PROJECT_ROOT/agents/analysts/catalyst-analyst.md" "$TMP_DIR/catalyst.status" "$RENDER_PID_CATALYST"
 echo "阶段 1 完成"
 
 fi  # end should_run_stage 1
 
-# 拼接 4 份报告到临时文件（阶段 2/3 共用；无论是否跳过阶段 1 都从已有文件读取）
+# 拼接 5 份报告到临时文件（阶段 2/3 共用；无论是否跳过阶段 1 都从已有文件读取）
 REPORTS_CTX="$TMP_DIR/reports-context.txt"
 > "$REPORTS_CTX"
-for report in "$REPORT_DIR"/0{1,2,3,4}-*-report.md; do
+for report in \
+    "$REPORT_DIR/00-opinion-report.md" \
+    "$REPORT_DIR/01-emotion-report.md" \
+    "$REPORT_DIR/02-theme-report.md" \
+    "$REPORT_DIR/03-trend-report.md" \
+    "$REPORT_DIR/04-catalyst-report.md"; do
     if [[ -f "$report" ]]; then
         printf '\n\n=== %s ===\n' "$(basename "$report")" >> "$REPORTS_CTX"
         cat "$report" >> "$REPORTS_CTX"
@@ -451,7 +478,7 @@ while IFS= read -r theme <&3; do
     echo "  ├─ 看多辩手..."
     THEME_BULL_PROMPT="$TMP_DIR/theme-${THEME_IDX}-bull-prompt.txt"
     THEME_CTX_FILE="$TMP_DIR/theme-${THEME_IDX}-context.txt"
-    python3 - "$theme" "$REPORT_DIR/02-theme-report.md" "$REPORT_DIR/03-trend-report.md" "$REPORT_DIR/04-catalyst-report.md" > "$THEME_CTX_FILE" <<'PY'
+    python3 - "$theme" "$REPORT_DIR/00-opinion-report.md" "$REPORT_DIR/02-theme-report.md" "$REPORT_DIR/03-trend-report.md" "$REPORT_DIR/04-catalyst-report.md" > "$THEME_CTX_FILE" <<'PY'
 import sys, re, pathlib
 
 theme = sys.argv[1].strip()

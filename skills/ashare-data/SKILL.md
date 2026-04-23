@@ -67,7 +67,7 @@ pi-trader data emotion 2026-03-21
 
 | Command | Function | Usage |
 |---------|----------|-------|
-| `review` | Market review data | `pi-trader data review <trade_date>` |
+| `review` | Market review raw structured data | `pi-trader data review <trade_date>` |
 
 ### Screening
 
@@ -98,7 +98,8 @@ pi-trader data emotion 2026-03-21
 
 - Most list endpoints return a **JSON array** `[...]` directly — not a `{"data": [...]}` wrapper object.
 - Access elements with `.[0]`, `.[]` etc. Never use `.data`.
-- Exception: `new-high` returns `{"trade_date": "...", "count": N, "stocks": [...]}` — the script extracts `.stocks` automatically, so callers still receive a bare array.
+- Exception 1: `new-high` returns `{"trade_date": "...", "count": N, "stocks": [...]}` — the script extracts `.stocks` automatically, so callers still receive a bare array.
+- Exception 2: `review` returns a **JSON object** with top-level `trade_date`, `generated_at`, and `sections`.
 - The `theme_stage` field uses English codes. Translate to Chinese when writing reports:
 
 | API value | Chinese stage |
@@ -138,6 +139,16 @@ pi-trader data emotion 2026-03-21
 - `theme_resonance`: true if primary theme is in top-N themes
 - `prev_day_yizi`: true if previous day was a one-character-limit stock (filtered out by default)
 
+### review fields (object)
+- top-level: `trade_date`, `generated_at`, `sections`
+- `sections.us_market`: US indices + core stocks, used for overnight risk appetite
+- `sections.eastmoney_hot_stocks`: Eastmoney hot stocks list
+- `sections.ths_hot_themes`: simplified THS hot themes view, each with `rank`, `theme_name`, `change_pct`, `limit_up_num`, `high`, `leader_stock`
+- `sections.ths_limit_up_ladder`: flattened limit-up ladder, each with `board_count`, `rank_in_board_count`, `code`, `name`, `continue_num`
+- `sections.news_headlines`: news title/link candidates
+- `sections.taoguba_posts`: TaoGuBa post title/link candidates
+- `sections.ths_snapshot`: original THS snapshot payload; prefer simplified views first, use this only as fallback
+
 ### stock-fundamental fields
 - `analyst_count`: number of analysts covering the stock
 - `ratings`: `{buy, outperform, neutral, underperform, sell}` counts
@@ -164,5 +175,5 @@ NO direct curl calls to the API. No exceptions.
 NEVER reconstruct the API call manually.
 
 NO `.data` key when accessing output. No exceptions.
-All list endpoints return a bare JSON array `[...]`.
+List endpoints return bare JSON arrays `[...]`; `review` is the only commonly used command here that returns a structured object under `sections`.
 

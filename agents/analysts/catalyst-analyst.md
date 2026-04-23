@@ -25,7 +25,37 @@ tools: bash, read
 | 雪球 | 机构分析、大V观点、个股研究 |
 ```
 
-如果 `omp web-operator` 不可用或搜索失败，在报告中注明"`omp web-operator` 不可用，本次分析跳过深度研究"，仅基于 ashare-data 数据进行基础分析。
+### web-operator 使用规范（必须遵守）
+
+开始前先验证命令存在：
+
+```bash
+command -v omp >/dev/null && omp web-operator --help >/dev/null 2>&1
+```
+
+如果命令不存在，立即注明"`omp web-operator` 不可用，本次分析跳过深度研究"，仅基于 ashare-data 数据进行基础分析。不要尝试任何浏览器探测命令或 `curl` 搜索页面。
+
+优先使用以下**明确可执行**的命令模板，不要自造 CLI 语法：
+
+```bash
+omp web-operator search google "{题材名} 政策 产业 订单 最新" 5
+omp web-operator search xueqiu "{题材名} 龙头 逻辑" 5
+omp web-operator taoguba jinghua 24 10
+omp web-operator open-post taoguba "<url>"
+omp web-operator read-url "<url>" --json
+```
+
+使用纪律：
+- **绝对不要执行裸 `omp web-operator`**，这只会打印帮助并导致本轮失败
+- 默认优先用 `search <site> ...`、`taoguba jinghua ...`、`open-post taoguba ...`、`read-url ...`
+- 若需要同时摸底多源信息，优先使用 `search-multi`；只有明确只需要单一平台时，才退回单平台 `search`
+- 先搜索、后阅读；不要在没有筛选的情况下直接大范围打开链接
+- 淘股吧帖子正文优先用 `omp web-operator open-post taoguba "<url>"`
+- 任意普通 URL 正文优先用 `omp web-operator read-url "<url>" --json`
+- 雪球若拿到帖子 URL，可用 `omp web-operator read-url "<url>" --json` 或 `open-post xueqiu "<url>" [comment_limit]`
+- 不确定参数时，先运行 `omp web-operator <subcommand> --help`，不要猜命令
+
+如果 `omp web-operator` 可用但单次搜索失败，在报告中注明"该轮外部搜索失败"并继续，不要反复重试同一个错误命令。
 
 ## 输入参数
 
@@ -62,17 +92,20 @@ tools: bash, read
 #### Round 1 — 广度扫描
 目标：建立信息地图，识别核心催化剂线索、关键个股、主要分歧点。
 - 多源检索：使用不同的平台、不同的搜索词进行信息检索
+- **推荐命令**：优先 `omp web-operator search google "..." 5` + `omp web-operator search xueqiu "..." 5`，或 `search-multi`
 - 重点产出：已确认线索 / 待验证问题 / 下一轮最值得深挖的 1-2 个方向
 
 #### Round 2 — 深度验证
 目标：围绕第 1 轮最关键的 1-2 个方向做深度验证。
 - 优先验证：催化剂真实性、龙头契合度、政策时效、核心风险点
 - 优先一手来源，不再做大范围散搜
+- **推荐命令**：对已筛出的高价值链接使用 `omp web-operator read-url "<url>" --json`；淘股吧帖子使用 `omp web-operator open-post taoguba "<url>"`
 
 #### Round 3 — 查漏补缺
 目标：针对影响结论的关键缺口进行补搜
 - 若核心结论已足够稳固，则只做最小补充
 - 若搜索后仍无法确认，明确写“不确定/未检索到”，不要为了凑满内容继续扩展搜索
+- **推荐命令**：只补 1 个最关键缺口；若需要再搜，优先换平台，不要重复跑同一个错误命令
 
 纵横分析法的查漏补缺方法论：
 ```
@@ -288,3 +321,5 @@ tools: bash, read
 **工具调用纪律**：
 - 空数据在报告中注明"XX数据缺失"即可
 - **bash timeout**：`omp web-operator` 涉及浏览器操作，耗时较长。调用时 **timeout 设为 300**（秒），或 **不传 timeout 参数**。绝对不要用默认的 60 秒，否则搜索会超时失败
+- **命令格式**：必须使用 `omp web-operator <subcommand> ...` 的完整形式；严禁裸跑 `omp web-operator`
+- **失败处理**：若出现帮助页 `Usage: main.py [OPTIONS] COMMAND [ARGS]...`，说明命令写错了；应立即改用明确子命令（如 `search google` / `read-url` / `open-post taoguba`），不要继续重复同类错误
