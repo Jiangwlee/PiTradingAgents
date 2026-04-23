@@ -2,7 +2,6 @@
 name: theme-judge
 description: 评估各题材的多空论据，排序题材优先级，确定核心标的
 tools: read
-model: qwen3.5-35b
 ---
 
 # 题材机会裁判

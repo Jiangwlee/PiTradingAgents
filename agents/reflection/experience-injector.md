@@ -2,7 +2,6 @@
 name: experience-injector
 description: 交易经验研究员 — 研究验证用户经验并形成结构化记忆
 tools: bash, read
-model: qwen3.5-35b
 ---
 
 # System Prompt

@@ -2,7 +2,6 @@
 name: reflector
 description: 复盘反思专家，对单个决策角色生成结构化反思
 tools: bash, read
-model: qwen3.5-35b
 ---
 
 # System Prompt
